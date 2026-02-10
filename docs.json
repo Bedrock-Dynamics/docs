@@ -101,6 +101,7 @@
   "footer": {
     "socials": {
       "github": "https://github.com/bedrock-dynamics",
+      "docker": "https://hub.docker.com/u/bedrockdynamics",
       "x": "https://x.com/bedrockdynamics"
     }
   }
