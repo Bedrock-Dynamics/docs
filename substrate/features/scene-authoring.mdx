@@ -1,0 +1,71 @@
+---
+title: "Scene Authoring"
+description: "Edit simulation scenes interactively with visual tools"
+---
+
+Substrate lets you modify a running simulation directly from the 3D viewer. Select entities, adjust poses, spawn new models, and reorganize your scene without writing SDF by hand. All changes are sent to the simulation in real time through the bridge protocol.
+
+## Entity Inspector
+
+Click any entity in the 3D viewer to select it. The Entity Inspector panel opens automatically, displaying the selected object's properties and current state.
+
+## Pose Editor
+
+The inspector includes a 6-field pose editor for the selected entity:
+
+| Field | Description |
+|-------|-------------|
+| X, Y, Z | Position in meters (world frame) |
+| Roll, Pitch, Yaw | Orientation in degrees (Euler angles) |
+
+Edit any field directly. Changes are sent to the simulation as you type, so you see the entity move in the viewer immediately.
+
+<Tip>
+  The pose editor uses column-major Euler angle conventions. If you are converting from quaternion representations, the assistant can help with the math -- ask it to "convert this quaternion to Euler angles."
+</Tip>
+
+## Transform Gizmo
+
+When an entity is selected, a translate gizmo appears at its origin. Drag the axis arrows to move the entity along X (red), Y (green), or Z (blue).
+
+<AccordionGroup>
+  <Accordion title="Gizmo Behavior">
+    - Arrows are screen-space scaled to 80 pixels, so they remain the same apparent size regardless of zoom level
+    - GPU-pickable: axis detection uses the rendering pipeline, not CPU raycasting
+    - Updates are throttled to 30 Hz to avoid flooding the simulation bridge
+  </Accordion>
+  <Accordion title="Planned Gizmo Modes">
+    Rotate and scale gizmo modes are planned for a future release. The mode selection infrastructure exists but currently only translate is active.
+  </Accordion>
+</AccordionGroup>
+
+## Model Browser
+
+Spawn new models into the running simulation from the Model Browser panel.
+
+<Tabs>
+  <Tab title="Local Cache">
+    Scan your local Gazebo Fuel cache for previously downloaded models. Results appear instantly with no network requests.
+  </Tab>
+  <Tab title="Remote Search">
+    Search the Gazebo Fuel API directly from the panel. Results are fetched with debounced search to avoid excessive requests. Click any result to download and spawn it.
+  </Tab>
+</Tabs>
+
+<Info>
+  Models are spawned at the world origin. After spawning, select the new entity and use the transform gizmo or pose editor to position it.
+</Info>
+
+## Context Menu
+
+Right-click any entity in the 3D viewer to access quick actions:
+
+- **Focus** -- move the camera to center on the entity
+- **Inspect** -- open the Entity Inspector panel
+- **Duplicate** -- create a copy of the entity at the same position
+- **Delete** -- remove the entity from the simulation
+- **Copy Pose** -- copy the entity's current pose to the clipboard as X, Y, Z, Roll, Pitch, Yaw
+
+<Warning>
+  Delete is immediate and there is no undo. If you accidentally remove an entity, use the Model Browser to re-spawn it or reload the world.
+</Warning>

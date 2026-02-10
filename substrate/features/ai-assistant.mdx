@@ -1,0 +1,56 @@
+---
+title: "AI Assistant"
+description: "AI agent that understands your simulation in real time"
+---
+
+The Substrate AI Assistant is not a generic code copilot. It is a simulation-aware agent that can see your 3D scene, read live telemetry, query the scene graph, and execute commands against a running simulation. Open the chat panel from the right sidebar to start a conversation.
+
+## How It Works
+
+The assistant connects to your active simulation through the same bridge protocol that powers the rest of the IDE. It has access to a set of specialized tools that let it observe and interact with the simulation environment directly.
+
+<Tabs>
+  <Tab title="Observation Tools">
+    - **Scene Graph** -- query the full entity hierarchy, including models, links, joints, and sensors
+    - **Telemetry Sampling** -- read recent values from any data channel (attitude, position, battery, etc.)
+    - **Readiness Details** -- check which subsystems are online and which are still initializing
+    - **Topic Browser** -- discover all available data channels and their update rates
+    - **TF Tree** -- inspect the transform hierarchy between coordinate frames
+  </Tab>
+  <Tab title="Action Tools">
+    - **sim_exec** -- run scripts and commands against the simulation runtime
+    - **Screenshot Capture** -- take a screenshot of the 3D viewer and analyze it with vision (Gemini)
+    - **Background Execution** -- run long tasks asynchronously without blocking the conversation
+  </Tab>
+</Tabs>
+
+## Vision
+
+The assistant can capture screenshots of your 3D viewer and analyze them. Ask it to check whether a model loaded correctly, verify a drone's orientation, or inspect a collision geometry. You can also paste images directly into the chat.
+
+<Tip>
+  Try asking: "Take a screenshot and tell me if the drone is level." The assistant will capture the current viewer frame, analyze it, and respond with its observations.
+</Tip>
+
+## Model Tiers
+
+<CardGroup cols={2}>
+  <Card title="Standard" icon="gauge">
+    Claude Sonnet. Best for routine questions, parameter lookups, and straightforward debugging. Fast response times.
+  </Card>
+  <Card title="Max" icon="bolt">
+    Claude Opus. Use for complex multi-step reasoning, architecture decisions, and deep analysis of simulation behavior.
+  </Card>
+</CardGroup>
+
+## Context Awareness
+
+The assistant automatically knows what simulation is running, the vehicle type, current flight mode, and system health. You do not need to explain your setup -- ask questions directly.
+
+<Note>
+  The assistant reads simulation state on demand through tool calls. It does not continuously stream all telemetry. This keeps conversations focused and avoids unnecessary overhead.
+</Note>
+
+## Image Uploads
+
+Paste or drag screenshots directly into the chat input. The assistant will analyze the image content alongside any active simulation context to provide relevant answers.

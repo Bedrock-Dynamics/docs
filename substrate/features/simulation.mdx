@@ -1,0 +1,58 @@
+---
+title: "Simulation"
+description: "Launch and manage robotics simulations directly from the IDE"
+---
+
+Substrate IDE integrates a full simulation environment into your development workflow. Launch Software-In-The-Loop (SITL) simulations, monitor system readiness, and iterate on your robotics code without leaving the editor.
+
+## Launching a Simulation
+
+Open the **SITL Launcher** panel from the left sidebar. Select your autopilot firmware, robot type, and world configuration, then click **Launch**. Substrate handles the rest.
+
+<CardGroup cols={2}>
+  <Card title="Autopilot Firmware" icon="microchip">
+    PX4 and ArduPilot are supported out of the box. Substrate pulls the correct firmware version and configures the SITL environment automatically.
+  </Card>
+  <Card title="Robot Types" icon="robot">
+    Quadcopters, hexacopters, rovers, robot arms, and custom URDF models. Select from built-in configurations or point to your own model files.
+  </Card>
+  <Card title="Physics Engine" icon="atom">
+    Gazebo simulation with selectable world files. Choose from empty worlds, warehouse environments, outdoor terrains, or your own custom SDF worlds.
+  </Card>
+  <Card title="Docker-Based Isolation" icon="cube">
+    Each simulation runs in a Docker container. Substrate pulls and manages simulation stacks automatically -- no manual Docker configuration required.
+  </Card>
+</CardGroup>
+
+## Readiness Monitoring
+
+Once a simulation launches, the readiness panel displays the status of every critical subsystem. Each indicator transitions from red to green as the corresponding system comes online.
+
+<AccordionGroup>
+  <Accordion title="Monitored Systems">
+    - **GPS Lock** -- satellite count and fix type
+    - **Compass** -- magnetometer calibration status
+    - **Gyroscope** -- IMU health and data rate
+    - **EKF** -- estimator convergence and innovation flags
+    - **Battery** -- simulated voltage and current
+  </Accordion>
+  <Accordion title="Continuous Health Checks">
+    Health checks run throughout the simulation lifecycle, not just at startup. If the EKF diverges or a sensor feed drops, the corresponding indicator reverts to a warning state so you can diagnose issues immediately.
+  </Accordion>
+</AccordionGroup>
+
+## Fleet Simulation
+
+<Info>
+  Launching multiple simulation instances for fleet testing is available on the **Pro plan**. Each instance runs in its own container with independent readiness monitoring.
+</Info>
+
+## Tips
+
+<Tip>
+  Use `PX4_MODEL=x500` (spawn mode) when configuring PX4 SITL. Do not set `PX4_GZ_MODEL_NAME` -- it enables attach mode, which skips sensor spawning and causes the EKF to stall.
+</Tip>
+
+<Warning>
+  Simulations require Docker to be installed and running on your machine. Substrate will display a clear error if Docker is not available.
+</Warning>

@@ -1,0 +1,58 @@
+---
+title: "3D Viewer"
+description: "GPU-accelerated robotics visualization with real-time scene rendering"
+---
+
+The 3D Viewer renders your simulation scene using the GPU via wgpu, supporting Vulkan, Metal, and DX12 backends. It displays URDF and SDF models, animates joint states from live telemetry, and provides interactive camera controls for inspecting your robot and its environment.
+
+## Camera Controls
+
+<CardGroup cols={3}>
+  <Card title="Orbit" icon="rotate">
+    Left-click and drag to orbit around the focal point.
+  </Card>
+  <Card title="Zoom" icon="magnifying-glass">
+    Right-click and drag (or scroll wheel) to zoom in and out.
+  </Card>
+  <Card title="Pan" icon="arrows-up-down-left-right">
+    Middle-click and drag to pan the camera laterally.
+  </Card>
+</CardGroup>
+
+Camera presets are available from the viewer toolbar:
+
+- **Front** / **Side** / **Top** -- axis-aligned orthographic views
+- **Isometric** -- 45-degree perspective for general inspection
+
+## Key Capabilities
+
+<AccordionGroup>
+  <Accordion title="Model Loading">
+    The viewer loads URDF and SDF models directly from the simulation or from local files. Meshes, materials, and collision geometries are rendered with correct transforms from the scene graph.
+  </Accordion>
+  <Accordion title="Real-Time Joint Animation">
+    Joint states streamed from the simulation are applied to the model in real time. Watch articulated robots move as the controller runs, or scrub through recorded data to inspect motion frame by frame.
+  </Accordion>
+  <Accordion title="Point Cloud Rendering">
+    Lidar and depth sensor data can be displayed as point clouds with configurable color modes (intensity, height, range). Useful for verifying sensor coverage and obstacle detection.
+  </Accordion>
+  <Accordion title="TF Frame Display">
+    Toggle coordinate frame axes to visualize the TF tree. Each frame is drawn at its resolved position and orientation, making it straightforward to debug transform chains between sensors, joints, and the world frame.
+  </Accordion>
+</AccordionGroup>
+
+## Entity Selection
+
+Click any entity in the scene to select it. The selection is highlighted with an outline, and the Entity Inspector panel opens automatically to show the selected object's properties, pose, and metadata.
+
+## Split Views
+
+Open multiple 3D Viewer instances in split panes to observe the same scene from different angles simultaneously. Each viewer maintains independent camera state.
+
+<Tip>
+  Use the **Top** camera preset in a secondary viewer while keeping your main viewer in free orbit. This gives you a map-like overview alongside a detailed perspective.
+</Tip>
+
+<Note>
+  Rendering performance depends on your GPU. Integrated graphics will work for simple scenes, but dedicated GPUs are recommended for complex environments with multiple robots and dense point clouds.
+</Note>

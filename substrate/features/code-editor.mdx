@@ -1,0 +1,61 @@
+---
+title: "Code Editor"
+description: "Full-featured editor built on Rust for native performance"
+---
+
+Substrate IDE is built on Rust and wgpu -- not Electron. The editor delivers native performance for syntax highlighting, code navigation, and text manipulation, even on large files and complex projects. It supports the Language Server Protocol for intelligent completions across 50+ languages.
+
+## Performance Architecture
+
+The editor uses a UI/Proxy split architecture. All text editing happens locally in the UI process, so keystrokes are never sent over the network. The Proxy process handles file I/O, LSP communication, git operations, and plugin execution. This separation is why editing feels instant even when connected to a remote workspace.
+
+<Note>
+  The Proxy can run on a remote machine while the UI runs locally. Editing latency remains zero because the buffer is owned by the UI. Only save events and editing deltas are synchronized with the Proxy.
+</Note>
+
+## Language Support
+
+<Tabs>
+  <Tab title="LSP Features">
+    - **Completions** -- context-aware suggestions from the language server
+    - **Go to Definition** -- jump to symbol definitions across files
+    - **Find References** -- locate all usages of a symbol in the workspace
+    - **Hover Information** -- type signatures, documentation, and diagnostics on hover
+    - **Code Actions** -- quick fixes, refactors, and import suggestions
+    - **Diagnostics** -- inline errors and warnings from the compiler or linter
+  </Tab>
+  <Tab title="Syntax Highlighting">
+    Tree-sitter grammars provide accurate, incremental syntax highlighting for 50+ languages. Highlighting updates as you type without re-parsing the entire file.
+  </Tab>
+</Tabs>
+
+## Editor Features
+
+<CardGroup cols={2}>
+  <Card title="Split Views" icon="table-columns">
+    Split the editor horizontally or vertically to view multiple files side by side. Each split maintains independent scroll position and cursor state.
+  </Card>
+  <Card title="Integrated Terminal" icon="terminal">
+    Open multiple terminal tabs within the IDE. Terminals run in the Proxy process, so they work seamlessly in both local and remote configurations.
+  </Card>
+  <Card title="Git Integration" icon="code-branch">
+    The source control panel shows diffs, staged changes, and commit history. Perform common git operations without switching to an external terminal.
+  </Card>
+  <Card title="Command Palette" icon="search">
+    Press the keyboard shortcut to open the command palette. Search for any command, setting, or file by name.
+  </Card>
+</CardGroup>
+
+## Modal Editing
+
+<Info>
+  Vim keybindings are available and can be toggled from the settings. When enabled, the editor supports normal, insert, visual, and command modes with standard Vim motions and operators.
+</Info>
+
+## Plugin System
+
+Extend the editor with plugins for additional language grammars, themes, and custom functionality. Plugins run in the Proxy process using a WASI-based sandbox, keeping the UI process lightweight and responsive.
+
+<Tip>
+  For robotics development, install language plugins for Python, C++, and ROS message definitions to get full LSP support across your entire stack.
+</Tip>

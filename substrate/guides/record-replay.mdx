@@ -1,0 +1,66 @@
+---
+title: "Record & Replay Data"
+description: "Capture and play back telemetry sessions"
+---
+
+Substrate supports recording live telemetry streams to MCAP files and replaying them for post-session analysis. Every panel -- 3D viewers, plots, logs -- synchronizes to the same playback clock, so you can correlate events across data sources at any point in time.
+
+## Recording
+
+To capture a session, click the **Record** button in the toolbar (the circle icon). While recording is active, the button pulses red and all subscribed topic data streams into an MCAP file.
+
+<Steps>
+  <Step title="Start recording">
+    Click the **Record** button in the toolbar, or use the Command Palette and search for **"Start Recording"**. Recording begins immediately for all active topic subscriptions.
+  </Step>
+  <Step title="Monitor recording">
+    The status bar displays the recording duration and file size as data accumulates. All topics that are currently subscribed in any panel are included in the recording.
+  </Step>
+  <Step title="Stop recording">
+    Click the **Record** button again to stop. The MCAP file is saved to your workspace directory with a timestamp-based filename, for example `session_2026-02-10T14-30-00.mcap`.
+  </Step>
+</Steps>
+
+<Note>
+  Recording captures raw message data at full fidelity. No downsampling or lossy compression is applied. File sizes depend on the number of topics and their publish rates -- a typical PX4 SITL session with telemetry and pose data produces roughly 5-15 MB per minute.
+</Note>
+
+## Replay
+
+Open any `.mcap` file from the file explorer or via **File > Open**. Substrate detects the format automatically and switches to replay mode.
+
+When an MCAP file is loaded, a **playback bar** appears at the bottom of the workspace. All panels synchronize to the playback position.
+
+### Playback Controls
+
+| Control | Action |
+|---------|--------|
+| Play / Pause | Toggle continuous playback |
+| Step Forward | Advance by a single message timestamp |
+| Speed | Cycle through 0.5x, 1x, 2x, and 4x playback rates |
+| Seek | Click anywhere on the timeline to jump to that timestamp |
+| Scroll Zoom | Scroll on the timeline to zoom into a time range |
+
+<Tabs>
+  <Tab title="Keyboard Shortcuts">
+    - **Space** -- Play / Pause
+    - **Right Arrow** -- Step forward one frame
+    - **Left Arrow** -- Step backward one frame
+    - **+** / **-** -- Increase / decrease playback speed
+  </Tab>
+  <Tab title="Panel Synchronization">
+    All panels receive the same playback timestamp. A 3D viewer shows the scene state at that instant, plots draw a vertical cursor at the current time, and log panels scroll to the corresponding entries. This synchronization is automatic and cannot be disabled.
+  </Tab>
+</Tabs>
+
+<Tip>
+  MCAP is the modern replacement for ROS bag files. It supports random-access seeking, self-describing schemas, and multi-topic storage in a single file. It is the standard recording format used by Foxglove and Rerun.
+</Tip>
+
+## ULog Flight Logs
+
+Substrate also supports PX4 ULog files (`.ulg`). When you open a ULog file, Substrate applies a purpose-built layout with a 3D flight path viewer, GPS map, telemetry plot groups, and a log message panel. All panels synchronize to the same playback clock, just like MCAP replay.
+
+<Note>
+  ULog files contain PX4-specific parameter snapshots, logging metadata, and multi-rate message topics. Substrate parses all of these and exposes parameters as browsable constant-value channels.
+</Note>

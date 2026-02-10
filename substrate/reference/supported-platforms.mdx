@@ -1,0 +1,68 @@
+---
+title: "Supported Platforms"
+description: "Ecosystem compatibility matrix"
+---
+
+Substrate integrates with the major frameworks, simulators, and data formats used in robotics and autonomous systems development.
+
+## Ecosystem Compatibility
+
+| Platform | Category | Support Level | Notes |
+|----------|----------|---------------|-------|
+| PX4 | Autopilot | Full | SITL launch, MAVLink telemetry, flight modes, parameter browsing |
+| ArduPilot | Autopilot | Full | Copter, Rover, and Plane SITL variants |
+| Gazebo | Simulator | Full | Scene graph streaming, Fuel model browsing, world file selection |
+| ROS 2 | Framework | Streaming | Topic subscription and visualization via Foxglove WebSocket Bridge |
+| MAVLink | Protocol | Full | Message inspector, command dispatch, heartbeat monitoring |
+| MCAP | Data Format | Full | Record, replay, random-access seek, multi-topic storage |
+| ULog | Data Format | Full | PX4 flight log analysis with synchronized playback and parameters |
+| URDF | Model Format | Full | Robot description loading and 3D rendering |
+| SDF | Model Format | Full | Gazebo world and model description parsing |
+| MuJoCo | Simulator | Planned | Physics simulation integration (coming soon) |
+
+<Tabs>
+  <Tab title="Support Level Definitions">
+    - **Full** -- First-class integration with dedicated UI panels, streaming, and tooling.
+    - **Streaming** -- Data flows into Substrate for visualization and recording, but Substrate does not manage the external system's lifecycle.
+    - **Planned** -- On the roadmap. Not yet available in production builds.
+  </Tab>
+  <Tab title="Version Requirements">
+    - **PX4**: v1.14 and later (tested against v1.15)
+    - **ArduPilot**: 4.3 and later
+    - **Gazebo**: Harmonic (gz-sim 8) and later
+    - **ROS 2**: Humble, Iron, and Jazzy
+    - **MAVLink**: v2 protocol
+  </Tab>
+</Tabs>
+
+## Operating Systems
+
+<CardGroup cols={3}>
+  <Card title="macOS" icon="apple">
+    macOS 12 (Monterey) and later. Both Apple Silicon (M1/M2/M3/M4) and Intel are supported. Metal is used for GPU rendering.
+  </Card>
+  <Card title="Windows" icon="windows">
+    Windows 10 (version 1809) and later. Vulkan or DirectX 12 is used for GPU rendering. Docker Desktop is required for simulation features.
+  </Card>
+  <Card title="Linux" icon="linux">
+    Ubuntu 22.04 and later, or equivalent distributions. Both X11 and Wayland display servers are supported. Vulkan is used for GPU rendering.
+  </Card>
+</CardGroup>
+
+## Hardware Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 4 cores | 8+ cores |
+| RAM | 8 GB | 16 GB |
+| GPU | Vulkan 1.1 / Metal 2 capable | Discrete GPU with 2+ GB VRAM |
+| Disk | 2 GB for Substrate | 10+ GB (simulation images are 2--4 GB each) |
+| Docker | Docker Engine 20.10+ | Docker Desktop or Engine with BuildKit |
+
+<Note>
+  Integrated GPUs (Intel UHD, Apple M-series, AMD Radeon integrated) are supported and work well for the code editor and basic 3D viewing. Complex simulation scenes with large point clouds or many entities benefit from a discrete GPU.
+</Note>
+
+<Warning>
+  Simulation features require Docker. On macOS and Windows, install Docker Desktop. On Linux, install Docker Engine. Substrate will display an error at launch if Docker is not available and simulation features are used.
+</Warning>

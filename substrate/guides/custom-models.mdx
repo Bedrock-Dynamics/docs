@@ -1,0 +1,73 @@
+---
+title: "Custom Models"
+description: "Load URDF/SDF models and browse Gazebo Fuel"
+---
+
+Substrate supports loading robot and environment models from URDF and SDF files, browsing the Gazebo Fuel model repository, and spawning models directly into a running simulation.
+
+## Loading from File
+
+Open any `.urdf` or `.sdf` file from the file explorer. Substrate parses the model description -- links, joints, visual meshes, and collision geometry -- and renders it in the 3D Viewer panel.
+
+<CardGroup cols={2}>
+  <Card title="URDF" icon="robot">
+    Universal Robot Description Format. The standard for ROS-based robot descriptions. Substrate renders visual meshes, joint axes, and link frames from the URDF tree.
+  </Card>
+  <Card title="SDF" icon="globe">
+    Simulation Description Format. Used by Gazebo for both robot models and world files. Substrate supports SDF models, lights, and physics properties.
+  </Card>
+</CardGroup>
+
+Supported mesh formats within model descriptions include STL, DAE (Collada), and OBJ. Mesh file paths are resolved relative to the model file's location.
+
+## Gazebo Fuel Browser
+
+The **Model Browser** panel provides access to the Gazebo Fuel model library, which contains thousands of community-contributed and officially maintained 3D models.
+
+<Steps>
+  <Step title="Open the Model Browser">
+    Open the Model Browser panel from the left sidebar, or use the Command Palette and search for **"Model Browser"**.
+  </Step>
+  <Step title="Browse local or remote models">
+    By default, the panel displays models from your local Fuel cache. Toggle **Remote** to search the Gazebo Fuel API directly. Type a search query to filter results -- search is debounced so results update as you type.
+  </Step>
+  <Step title="Spawn into simulation">
+    Click any model in the browser to spawn it into the running Gazebo simulation. The model appears at the world origin and is immediately visible in the 3D Viewer.
+  </Step>
+</Steps>
+
+<Tip>
+  Spawned models appear at the world origin. Use the transform gizmo to reposition them -- select the model in the 3D Viewer, then drag the translation handles to move it to the desired location.
+</Tip>
+
+## Local Cache
+
+Models downloaded from Gazebo Fuel are cached on disk at `~/.gz/fuel/`. The Model Browser scans this cache directory automatically and displays cached models without requiring a network connection.
+
+This means that models you have previously used in Gazebo -- whether through Substrate or the command line -- are immediately available in the browser.
+
+<AccordionGroup>
+  <Accordion title="Cache structure">
+    The Fuel cache follows Gazebo's standard directory layout:
+
+    ```
+    ~/.gz/fuel/
+    └── fuel.gazebosim.org/
+        └── <owner>/
+            └── models/
+                └── <model-name>/
+                    └── <version>/
+                        ├── model.sdf
+                        └── meshes/
+    ```
+
+    Each model version is stored independently, and Substrate reads the latest available version by default.
+  </Accordion>
+  <Accordion title="Clearing the cache">
+    To free disk space, you can safely delete directories within `~/.gz/fuel/`. The Model Browser will update its listing on the next scan. Models will be re-downloaded from Fuel if you need them again.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Spawning a model requires an active Gazebo simulation. If no simulation is running, the Model Browser displays models for preview only. Launch a simulation from the SITL Launcher panel to enable spawning.
+</Note>

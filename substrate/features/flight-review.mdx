@@ -1,0 +1,65 @@
+---
+title: "Flight Review"
+description: "Analyze recorded flight data with synchronized multi-panel playback"
+---
+
+Open a PX4 ULog file (`.ulg`) directly in Substrate to get a full post-flight analysis workspace. The editor automatically arranges a multi-panel layout with 3D trajectory visualization, GPS mapping, time-series plots, and log messages -- all synchronized to a single timeline.
+
+## Automatic Layout
+
+When you open a `.ulg` file, Substrate applies a purpose-built layout:
+
+<CardGroup cols={2}>
+  <Card title="3D Viewer + GPS Map" icon="map">
+    Top row. The 3D viewer shows the vehicle trajectory as a spatial trace. The GPS map displays the ground track on a 2D map.
+  </Card>
+  <Card title="Plot Groups + Log Messages" icon="chart-mixed">
+    Bottom row. Four plot groups display attitude, position, velocity, and sensor data. A log message panel shows timestamped entries from the flight.
+  </Card>
+</CardGroup>
+
+## GPS Path Visualization
+
+The vehicle's GPS trajectory is rendered as a 3D trace in the viewer. Color coding can indicate altitude, speed, or flight mode, making it easy to identify segments of interest visually.
+
+## Flight Mode Timeline
+
+A color-coded bar at the bottom of the timeline shows flight mode transitions. Each segment corresponds to a mode (Manual, Altitude, Position, Mission, RTL, Land) with distinct colors so you can see the full mode history at a glance.
+
+## Synchronized Playback
+
+<Tabs>
+  <Tab title="Scrubbing">
+    Drag the timeline cursor to any point in the flight. All panels -- 3D viewer, GPS map, plots, and log messages -- update simultaneously to reflect that moment in time.
+  </Tab>
+  <Tab title="Playback Speed">
+    Play back the flight at configurable speeds: 0.5x, 1x, 2x, or 4x. Playback is wall-clock driven with frame-rate independent timing, so it remains smooth regardless of your display refresh rate.
+  </Tab>
+</Tabs>
+
+## Attitude Plots
+
+Roll, pitch, and yaw are plotted over time by default. Both setpoint and estimated values are shown, making it straightforward to evaluate controller tracking performance during maneuvers.
+
+## Log Messages
+
+Flight log messages are displayed with severity-based coloring:
+
+- **Red** -- Error (levels 0-3)
+- **Yellow** -- Warning (level 4)
+- **Blue** -- Info (levels 5-6)
+- **Gray** -- Debug (level 7+)
+
+Use the search field and severity filter to narrow down entries when diagnosing issues.
+
+## Vehicle Parameters
+
+Static parameter values recorded in the log are browsable in a dedicated section. This lets you verify what tuning was active during the flight without needing the live vehicle.
+
+<Tip>
+  Combine the flight mode timeline with attitude plots to quickly find oscillations or tracking errors that correlate with specific mode transitions.
+</Tip>
+
+<Note>
+  Only PX4 ULog format is currently supported. MCAP recordings captured during live simulation can also be opened with the same layout.
+</Note>

@@ -1,0 +1,87 @@
+---
+title: "Installation"
+description: "Download and install Substrate on macOS, Windows, or Linux."
+---
+
+Download the latest release from [bedrockdynamics.studio/download](https://bedrockdynamics.studio/download) and follow the instructions for your platform.
+
+<Tabs>
+  <Tab title="macOS">
+    1. Download the `.dmg` file from [bedrockdynamics.studio/download](https://bedrockdynamics.studio/download).
+    2. Open the downloaded `.dmg` to mount the disk image.
+    3. Drag **Substrate** into your **Applications** folder.
+    4. Launch Substrate from Applications. On first launch, macOS may ask you to confirm that you want to open an application downloaded from the internet.
+
+    <Note>
+      Substrate requires macOS 12 (Monterey) or later. Both Apple Silicon and Intel Macs are supported. The universal binary runs natively on both architectures.
+    </Note>
+  </Tab>
+
+  <Tab title="Windows">
+    **MSI Installer (recommended)**
+
+    1. Download the `.msi` installer from [bedrockdynamics.studio/download](https://bedrockdynamics.studio/download).
+    2. Run the installer and follow the prompts. Substrate will be added to your Start Menu.
+    3. Launch Substrate from the Start Menu or desktop shortcut.
+
+    **Portable ZIP**
+
+    If you prefer not to install, download the `.zip` archive, extract it to any folder, and run `Substrate.exe` directly.
+
+    <Note>
+      Substrate requires Windows 10 (version 1809) or later with a Vulkan-capable GPU driver.
+    </Note>
+  </Tab>
+
+  <Tab title="Linux">
+    Choose the package format that matches your distribution.
+
+    **Debian / Ubuntu**
+
+    ```bash
+    sudo dpkg -i substrate.ubuntu.noble.amd64.deb
+    ```
+
+    **Fedora**
+
+    ```bash
+    sudo dnf install substrate-0.4.6-1.fedora41.x86_64.rpm
+    ```
+
+    **Generic (tar.gz)**
+
+    For other distributions, use the portable tarball:
+
+    ```bash
+    tar -xzf substrate-linux-amd64.tar.gz
+    ./Substrate/substrate
+    ```
+
+    <Note>
+      Substrate supports both X11 and Wayland display servers. If you encounter rendering issues on Wayland, try launching with `WAYLAND_DISPLAY= ./substrate` to force the X11 backend.
+    </Note>
+  </Tab>
+</Tabs>
+
+## System Requirements
+
+| Requirement | Minimum |
+|-------------|---------|
+| **macOS** | 12 (Monterey) or later |
+| **Windows** | 10 (version 1809) or later |
+| **Linux** | X11 or Wayland with glibc 2.31+ |
+| **GPU** | Vulkan 1.1 support (or Metal on macOS) |
+| **RAM** | 4 GB (8 GB recommended for simulation workloads) |
+| **Disk** | 500 MB for the application; additional space for Docker images |
+
+<Warning>
+  **Docker is required for simulation features.** Substrate uses Docker to run PX4 SITL and Gazebo simulation containers. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS/Windows) or [Docker Engine](https://docs.docker.com/engine/install/) (Linux) before launching simulations. The code editor, telemetry viewer, and flight review features work without Docker.
+</Warning>
+
+## Verifying Your Installation
+
+After installing, launch Substrate and open the command palette with <kbd>Cmd+Shift+P</kbd> (macOS) or <kbd>Ctrl+Shift+P</kbd> (Windows/Linux). Type "About" and select **Substrate: About** to verify the installed version and check that the GPU backend initialized correctly.
+
+<Tip>
+  If the 3D viewer shows a blank panel or an error, check that your GPU drivers are up to date. On Linux, run `vulkaninfo` to confirm Vulkan support. On macOS, Metal is used automatically and requires no additional driver installation.
+</Tip>

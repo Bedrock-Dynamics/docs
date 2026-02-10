@@ -1,0 +1,83 @@
+---
+title: "What is Substrate?"
+description: "Substrate is a native desktop IDE purpose-built for robotics simulation, flight review, and autonomous systems development."
+---
+
+Substrate is a desktop development environment for robotics engineers. It combines a full code editor, physics simulation management, 3D visualization, and telemetry analysis into a single native application. Instead of switching between a text editor, terminal windows, RViz, PlotJuggler, and QGroundControl, you work in one integrated workspace.
+
+Substrate is designed for teams building with PX4, ArduPilot, ROS 2, and Gazebo. It runs locally on your machine with GPU-accelerated rendering and connects to both simulated and real hardware over MAVLink or ROS 2 topics.
+
+## The Workflow
+
+A typical development cycle in Substrate follows four stages:
+
+<Steps>
+  <Step title="Write">
+    Edit flight controllers, ROS 2 nodes, or mission scripts in the built-in code editor. Language Server Protocol support provides autocompletion, diagnostics, and go-to-definition across Python, C++, Rust, and more. Tree-sitter powers syntax highlighting for instant feedback as you type.
+  </Step>
+  <Step title="Simulate">
+    Launch a PX4 SITL or Gazebo simulation directly from the editor. Substrate manages the Docker containers, monitors readiness indicators, and tells you when the simulated vehicle is ready to fly. No terminal juggling required.
+  </Step>
+  <Step title="Visualize">
+    Inspect the simulation in real time through the 3D viewer. View URDF and SDF models, TF transform trees, sensor data overlays, and collision geometry. Telemetry plots update live alongside the 3D scene.
+  </Step>
+  <Step title="Deploy">
+    Connect to real hardware over MAVLink or ROS 2. The same visualization and telemetry tools work with physical vehicles, so you can validate behavior on real systems using the same interface you used in simulation.
+  </Step>
+</Steps>
+
+## Core Capabilities
+
+<CardGroup cols={2}>
+  <Card
+    title="AI Assistant"
+    icon="wand-magic-sparkles"
+    href="/substrate/features/ai-assistant"
+  >
+    An integrated AI agent that can control simulations, inspect telemetry, and execute mission commands through natural language. Ask it to take off, run a waypoint mission, or diagnose a sensor failure.
+  </Card>
+  <Card
+    title="3D Visualization"
+    icon="cube"
+    href="/substrate/features/3d-viewer"
+  >
+    GPU-accelerated 3D viewer for URDF and SDF models with real-time TF tree rendering, collision geometry overlays, and interactive camera controls. Supports entity selection, pose editing, and transform gizmos.
+  </Card>
+  <Card
+    title="Telemetry and Plotting"
+    icon="chart-line"
+    href="/substrate/features/telemetry"
+  >
+    Live and recorded telemetry plots for MAVLink messages, ROS 2 topics, and ULog data. Drag-and-drop channels onto plot groups, synchronize time cursors, and zoom into microsecond-level detail.
+  </Card>
+  <Card
+    title="Flight Review"
+    icon="plane"
+    href="/substrate/features/flight-review"
+  >
+    Open PX4 ULog files for post-flight analysis. Substrate renders the flight path in 3D, plots all logged channels, and synchronizes playback across every panel so you can correlate attitude, position, and actuator data at any point in time.
+  </Card>
+  <Card
+    title="Simulation Management"
+    icon="server"
+    href="/substrate/features/simulation"
+  >
+    Launch, monitor, and control PX4 SITL and Gazebo environments from within the editor. Readiness indicators track EKF convergence, GPS lock, and sensor health. Supports multi-vehicle scenarios and custom world files.
+  </Card>
+  <Card
+    title="Code Editor"
+    icon="code"
+    href="/substrate/features/code-editor"
+  >
+    Full-featured text editor with LSP integration, tree-sitter syntax highlighting, multi-cursor editing, Vim keybindings, and split panes. Built on a rope-based text buffer for responsive editing even on large files.
+  </Card>
+</CardGroup>
+
+## Built Different
+
+Substrate is not an Electron wrapper around web technologies. It is written in Rust with GPU-accelerated rendering via wgpu, giving it native performance characteristics:
+
+- **Zero-latency editing.** The text buffer and input handling run in the UI process on your local machine. Keystrokes never cross a network boundary for basic editing, even when the workspace proxy runs remotely.
+- **GPU-accelerated rendering.** The 3D viewer, text rendering, and UI compositor all run on the GPU through Vulkan, Metal, or DirectX backends. Complex scenes with thousands of entities render at full frame rate.
+- **UI/Proxy architecture.** Heavy operations like LSP communication, file I/O, Docker management, and simulation streaming run in a separate proxy process. The UI thread is never blocked by disk or network activity.
+- **Native memory footprint.** No JavaScript runtime, no bundled Chromium. Substrate typically uses a fraction of the memory required by Electron-based editors.

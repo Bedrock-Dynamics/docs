@@ -1,0 +1,66 @@
+---
+title: "Connect to a Robot"
+description: "Stream live data from a robot or simulator"
+---
+
+Substrate can connect to any robot, drone, or simulator that exposes data over a Foxglove WebSocket or ROS 2 bridge. Once connected, live topics stream directly into the IDE where you can visualize them in 3D viewers, telemetry plots, and the topic browser.
+
+## Establishing a Connection
+
+<Steps>
+  <Step title="Verify your robot or simulator is running">
+    Ensure your robot (or simulator) is powered on and publishing data. For ROS 2 systems, a Foxglove WebSocket bridge must be running on the target machine. For Gazebo simulations managed by Substrate, this is handled automatically.
+
+    Common bridge setups:
+
+    ```bash
+    # ROS 2 Foxglove Bridge
+    ros2 launch foxglove_bridge foxglove_bridge_launch.xml
+
+    # Verify topics are being published
+    ros2 topic list
+    ```
+  </Step>
+  <Step title="Open the connection dialog">
+    Open the Command Palette with `Cmd+P` (macOS) or `Ctrl+P` (Windows/Linux) and search for **"Connect to Robot"**. Select it to open the connection dialog.
+  </Step>
+  <Step title="Enter the WebSocket URL">
+    In the connection dialog, enter the WebSocket URL of your robot or bridge. Common defaults:
+
+    | Source | URL |
+    |--------|-----|
+    | Foxglove Bridge (local) | `ws://localhost:8765` |
+    | Foxglove Bridge (remote) | `ws://<robot-ip>:8765` |
+    | Custom endpoint | Any valid `ws://` or `wss://` URL |
+  </Step>
+  <Step title="Connect and verify">
+    Click **Connect**. Once the handshake completes, available topics appear in the **Topic Browser** panel on the left sidebar. Each topic shows its message type and current publish rate.
+  </Step>
+  <Step title="Add topics to panels">
+    Drag any topic from the Topic Browser into a panel:
+
+    - Drop onto a **Plot** panel to chart scalar or vector data over time.
+    - Drop onto a **Viewer3D** panel to render 3D markers, point clouds, or TF frames.
+    - Drop onto the **Log View** panel to stream text-based log messages.
+
+    Multiple panels can subscribe to the same topic simultaneously.
+  </Step>
+</Steps>
+
+<Tip>
+  For live Gazebo simulations launched from Substrate, the connection is automatic. The simulation bridge establishes a gRPC stream to the proxy as soon as the simulation container starts, and topics appear in the Topic Browser without any manual configuration.
+</Tip>
+
+## Connection Status
+
+The connection indicator in the status bar shows the current state:
+
+- **Green** -- Connected and receiving data.
+- **Yellow** -- Connected but no data received in the last 5 seconds.
+- **Red** -- Disconnected or connection failed.
+
+Click the indicator to open the connection dialog and reconnect or change the target URL.
+
+<Warning>
+  If connecting to a robot on a different network, verify that firewall rules allow WebSocket traffic on the target port. The default Foxglove Bridge port is 8765.
+</Warning>

@@ -1,0 +1,103 @@
+---
+title: "Architecture"
+description: "How Substrate achieves native performance"
+---
+
+Substrate is built in Rust with a split-process architecture designed for one goal: make everything feel instant, even when your workspace proxy runs on a remote machine or your simulation spans multiple Docker containers.
+
+## Why It's Fast
+
+Traditional editors that run editing logic on the backend suffer from input latency when used remotely -- every keystroke must cross the network before the user sees a response. Substrate avoids this entirely by keeping the editing engine in the same process as the UI.
+
+The result is that typing, cursor movement, selection, and syntax highlighting are always local operations. They never wait on network I/O, disk access, or simulation state. Everything else -- file synchronization, language servers, Docker management, simulation streaming -- runs in a separate **Proxy** process that can be local or remote without affecting editing performance.
+
+<Note>
+  This is why Substrate feels instant even over SSH -- keystrokes never cross the network.
+</Note>
+
+## The Split
+
+Substrate's architecture divides responsibility between two processes: the **UI** and the **Proxy**.
+
+```
+UI Process (always local)
+  Keyboard and mouse input
+  Text buffer and edit operations
+  Syntax highlighting (Tree-sitter, separate thread)
+  GPU rendering (wgpu)
+  Reactive UI state (Floem signals)
+       |
+       | JSON-RPC over stdio
+       |
+Proxy Process (local or remote)
+  File I/O and workspace sync
+  Language Server Protocol (LSP) clients
+  Git operations
+  Terminal PTY management
+  Docker container lifecycle
+  Simulation bridge (gRPC)
+  Plugin host (WASI)
+```
+
+The UI process owns the text buffer. When the user edits a file, the change is applied locally and a lightweight **delta** is sent to the Proxy for persistence. The Proxy never interprets or transforms edit content -- it simply writes the buffer to disk and relays events to plugins and language servers.
+
+Communication between the two processes uses JSON-RPC over standard I/O. When running locally, the Proxy is a child process of the UI. When running remotely, the same protocol flows over an SSH tunnel with no changes to either process.
+
+<CardGroup cols={2}>
+  <Card title="UI Responsibilities" icon="display">
+    - Keyboard and mouse handling
+    - Text buffer (rope-based)
+    - Cursor, selection, multi-cursor
+    - Syntax highlighting
+    - Panel layout and rendering
+    - Theme and configuration UI
+  </Card>
+  <Card title="Proxy Responsibilities" icon="server">
+    - File read/write and watching
+    - LSP server management
+    - Git operations (status, diff, blame)
+    - Terminal multiplexing
+    - Docker container management
+    - Simulation data streaming
+    - Plugin execution (WASI sandbox)
+  </Card>
+</CardGroup>
+
+## Rendering
+
+Substrate uses **wgpu** for all rendering, which provides GPU-accelerated output through the platform's native graphics API:
+
+| Platform | Backend |
+|----------|---------|
+| macOS | Metal |
+| Windows | Vulkan / DirectX 12 |
+| Linux | Vulkan |
+
+The text editor, 3D viewer, telemetry plots, and the entire UI compositor all render on the GPU. This means that scrolling through large files, rotating a 3D scene with thousands of entities, and updating live telemetry plots are all GPU-bound operations rather than CPU-bound, resulting in consistent frame rates regardless of content complexity.
+
+**Syntax highlighting** runs in a dedicated thread using Tree-sitter incremental parsing. When you type, the parser updates only the affected syntax tree nodes rather than re-parsing the entire file. The highlighted ranges are sent to the render thread asynchronously, so parsing never blocks input handling.
+
+## Simulation Bridge
+
+For robotics simulation features, the Proxy communicates with Gazebo through a dedicated **simulation bridge** (`substrate-sim-bridge`). This bridge runs as a sidecar process inside the simulation Docker container and streams data to the Proxy over gRPC.
+
+<Steps>
+  <Step title="Scene Graph">
+    The bridge reads the Gazebo scene and streams entity hierarchies, model descriptions, visual meshes, and material properties to the IDE. Changes in the simulation (spawned or deleted models, pose updates) are streamed in real time.
+  </Step>
+  <Step title="Telemetry">
+    Sensor data, joint states, and physics metrics flow through the bridge as time-stamped topic messages. The Proxy routes these to the UI where they populate plots, the topic browser, and readiness indicators.
+  </Step>
+  <Step title="Transforms">
+    The TF (transform) tree is streamed continuously, providing the parent-child frame relationships needed to render entities at their correct world-space positions in the 3D viewer.
+  </Step>
+  <Step title="Commands">
+    The bridge also accepts commands from the IDE -- spawning models, setting entity poses, and deleting entities. These flow in the reverse direction: UI to Proxy to bridge to Gazebo.
+  </Step>
+</Steps>
+
+All bridge communication uses Protocol Buffers for serialization, providing compact binary encoding and strong schema guarantees. The gRPC streams are long-lived and multiplexed, so the overhead per message is minimal.
+
+<Tip>
+  The simulation bridge architecture means that Substrate never links directly against Gazebo or physics engine libraries. The bridge acts as an isolation boundary, allowing Substrate to work with different Gazebo versions and potentially other simulators through the same protocol.
+</Tip>

@@ -1,0 +1,75 @@
+---
+title: "Telemetry & Plotting"
+description: "Real-time data inspection, time-series plotting, and vehicle control"
+---
+
+Substrate provides a complete telemetry pipeline for inspecting, plotting, and recording data from a running simulation. Monitor MAVLink messages, plot channels over time, record data streams, and send commands to the vehicle -- all from within the IDE.
+
+## MAVLink Inspector
+
+The inspector displays a live stream of MAVLink protocol messages between the autopilot and ground station. Filter by category to focus on the data you need.
+
+<Tabs>
+  <Tab title="Categories">
+    - **Attitude** -- roll, pitch, yaw, angular rates
+    - **Position** -- GPS coordinates, local NED position, altitude
+    - **Sensors** -- accelerometer, gyroscope, magnetometer, barometer
+    - **Battery** -- voltage, current, remaining percentage
+    - **System** -- heartbeat, system status, mode changes
+  </Tab>
+  <Tab title="Features">
+    - **Frequency display** -- see the update rate of each message type
+    - **Stale detection** -- messages that stop arriving are flagged automatically
+    - **Field expansion** -- expand any message to inspect individual field values
+  </Tab>
+</Tabs>
+
+## Topic Browser
+
+Discover every available data channel published by the simulation. Topics are organized by category and display their current update rate. Subscribe to topics to start receiving data in plots and the inspector.
+
+## Time-Series Plots
+
+Plot any telemetry channel over time in a Foxglove Studio-style interface.
+
+<CardGroup cols={2}>
+  <Card title="Multi-Channel" icon="chart-line">
+    Overlay multiple channels on a single plot to compare signals. Each channel gets a distinct color.
+  </Card>
+  <Card title="Auto-Scaling" icon="arrows-maximize">
+    Y-axis auto-scales to fit visible data. Manual range overrides are available when you need a fixed scale.
+  </Card>
+  <Card title="Time Window" icon="clock">
+    Adjust the visible time window from seconds to minutes. Pause the plot to freeze the view and inspect a specific moment.
+  </Card>
+  <Card title="Pause / Resume" icon="pause">
+    Pause live updates to examine data without it scrolling away. Resume to return to real-time display.
+  </Card>
+</CardGroup>
+
+## MCAP Recording
+
+<Info>
+  Toggle recording from the toolbar to capture live data streams into MCAP format. Recordings can be replayed later in the Flight Review panel or exported for analysis in external tools.
+</Info>
+
+## Drone Command Palette
+
+Send commands to the vehicle directly from the IDE:
+
+- **Arm** / **Disarm** -- toggle motor arming
+- **Takeoff** -- guided takeoff to a specified altitude
+- **Land** -- initiate landing sequence
+- **Return to Home** -- trigger RTL mode
+
+<Warning>
+  Arm and takeoff commands are only available when the readiness panel shows all systems green. This prevents sending commands to a vehicle that has not finished initialization.
+</Warning>
+
+## Parameter Tuner
+
+Browse the full set of vehicle parameters (1000+ for PX4) with keyword search. Adjust values using sliders or direct input. The sync indicator shows whether the parameter has been written to the vehicle.
+
+<Tip>
+  Use the search field to narrow down parameters quickly. Typing "MC_PITCHRATE" will filter to pitch rate PID gains, letting you tune controller response without scrolling through the full list.
+</Tip>

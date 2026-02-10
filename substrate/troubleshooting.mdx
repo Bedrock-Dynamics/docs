@@ -1,0 +1,152 @@
+---
+title: "Troubleshooting"
+description: "Common issues and solutions"
+---
+
+This page covers common issues you may encounter when using Substrate and how to resolve them. If your issue is not listed here, reach out on the [Bedrock Dynamics Discord](https://discord.gg/bedrockdynamics).
+
+<AccordionGroup>
+  <Accordion title="Simulation won't start">
+    Substrate uses Docker to run PX4 and Gazebo SITL simulations. If a simulation fails to launch:
+
+    1. **Verify Docker is running.** Open a terminal and run `docker ps`. If the command fails, start Docker Desktop (macOS/Windows) or the Docker daemon (Linux).
+
+    2. **Check available disk space.** Simulation images are 2--4 GB each. If your disk is full, Docker cannot pull or run containers.
+
+    3. **First launch is slow.** If this is the first time launching a particular simulation configuration, Substrate needs to pull the Docker image. This can take several minutes depending on your internet connection. Progress is displayed in the output panel.
+
+    4. **Port conflicts.** If another application is using MAVLink ports (14540, 14550) or the Gazebo transport ports, the simulation container may fail to start. Stop any conflicting processes and try again.
+
+    ```bash
+    # Check if Docker is running
+    docker ps
+
+    # Check for port conflicts
+    lsof -i :14550
+    ```
+  </Accordion>
+
+  <Accordion title="3D Viewer shows a black screen">
+    The 3D Viewer requires a GPU that supports Vulkan (Windows/Linux) or Metal (macOS).
+
+    **On Linux:**
+    - Install the Vulkan runtime and tools: `sudo apt install vulkan-tools mesa-vulkan-drivers`
+    - Verify Vulkan support: run `vulkaninfo` and confirm at least one GPU is listed.
+    - Update your GPU drivers to the latest version from your vendor (NVIDIA, AMD, or Intel).
+
+    **On macOS:**
+    - Metal is supported on all Macs from 2012 and later. If you see a black screen, ensure macOS is updated to at least version 12 (Monterey).
+
+    **On Windows:**
+    - Update your GPU drivers from the manufacturer's website. Vulkan support is included in modern NVIDIA, AMD, and Intel drivers.
+    - If Vulkan is unavailable, Substrate falls back to DirectX 12.
+
+    If the problem persists after updating drivers, check the Substrate log file for rendering errors. The log is located at `~/.local/share/substrate/log` (Linux), `~/Library/Logs/substrate/` (macOS), or `%APPDATA%\substrate\log` (Windows).
+  </Accordion>
+
+  <Accordion title="AI Assistant not responding">
+    The AI Assistant requires an active internet connection and an authenticated Substrate account.
+
+    1. **Check sign-in status.** Click the avatar in the top-right corner of the window. If you are not signed in, click "Sign In" and complete the authentication flow.
+
+    2. **Check the connection indicator.** A red indicator next to the AI panel header means the WebSocket connection to the AI backend is down. Verify your internet connection and try again.
+
+    3. **Free plan includes AI access.** No upgrade is required to use the AI Assistant. If you are signed in and connected but still not receiving responses, the backend may be experiencing temporary load. Wait a moment and retry.
+
+    4. **Firewall or proxy issues.** If you are behind a corporate firewall, ensure that outbound WebSocket connections to `*.bedrockdynamics.studio` on port 443 are allowed.
+  </Accordion>
+
+  <Accordion title="Docker images are large">
+    This is expected. PX4 + Gazebo simulation stacks include:
+
+    - A full physics simulator (Gazebo Harmonic)
+    - Sensor models (IMU, GPS, magnetometer, barometer, camera)
+    - Autopilot firmware (PX4 or ArduPilot)
+    - The simulation bridge (`substrate-sim-bridge`)
+    - Runtime dependencies (ROS 2 libraries, Protobuf, system packages)
+
+    A typical image is 2--4 GB compressed. After pulling, Docker stores the image layers on disk.
+
+    **To reclaim space:**
+    ```bash
+    # Remove unused Docker images
+    docker image prune
+
+    # Remove all Substrate simulation images
+    docker images | grep substrate | awk '{print $3}' | xargs docker rmi
+    ```
+
+    Substrate will re-pull any required images automatically on the next simulation launch.
+  </Accordion>
+
+  <Accordion title="Readiness indicators stay yellow">
+    After launching a PX4 SITL simulation, the readiness indicators (GPS, compass, EKF, gyroscope) transition from red to yellow to green as each subsystem initializes. It is normal for this process to take 10--15 seconds.
+
+    **If indicators remain yellow after 30 seconds:**
+
+    - **EKF convergence.** The Extended Kalman Filter needs consistent sensor data to converge. If GPS or compass indicators are still yellow, the EKF cannot complete initialization. Check the simulation output panel for EKF-related warnings.
+
+    - **Sensor spawning.** Ensure the simulation is using PX4 spawn mode (`PX4_MODEL=x500`), not attach mode. Attach mode skips sensor spawning, which means the EKF never receives data and cannot converge.
+
+    - **World file issues.** Some custom Gazebo worlds may not include the required sensor plugins (GPS, magnetometer). Verify that your world file includes the necessary sensor system plugins.
+
+    <Warning>
+      Never set `PX4_GZ_MODEL_NAME` in the Docker environment. This enables attach mode, which skips sensor spawning and causes the EKF to stall at an uninitialized state.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="MAVLink messages not appearing">
+    PX4 only auto-streams heartbeat messages by default. Substrate automatically sends `REQUEST_DATA_STREAM` commands to enable additional message types (GPS, estimator status, attitude, etc.) when a simulation starts.
+
+    If MAVLink messages are missing:
+
+    1. **Verify the MAVLink port.** PX4 SITL sends GCS telemetry on port 14550 by default. If you are using a custom MAVLink endpoint, confirm the port matches what Substrate expects.
+
+    2. **Check the MAVLink inspector.** Open the Command Palette and search for **"MAVLink Inspector"** to see raw message traffic. If only heartbeat messages appear, the data stream request may have failed.
+
+    3. **Firewall rules.** MAVLink uses UDP. Ensure that UDP traffic on the configured ports is not blocked.
+
+    4. **GCS heartbeat filtering.** PX4 echoes back ground control station heartbeats. These echoed messages have `mav_type=6` (GCS) and are filtered out automatically by Substrate. Only messages from the autopilot are displayed.
+  </Accordion>
+
+  <Accordion title="Cannot connect to a remote robot">
+    Substrate connects to robots and external systems via Foxglove WebSocket.
+
+    1. **Verify the bridge is running on the robot.** SSH into the robot and confirm the Foxglove WebSocket bridge process is active:
+
+       ```bash
+       # For ROS 2 Foxglove Bridge
+       ros2 launch foxglove_bridge foxglove_bridge_launch.xml
+       ```
+
+    2. **Check the port.** The default Foxglove Bridge port is 8765. Confirm this in the bridge's launch configuration and in the Substrate connection dialog.
+
+    3. **Network connectivity.** Ensure the robot is reachable from your development machine. Test with:
+
+       ```bash
+       # Test WebSocket connectivity
+       curl -v http://<robot-ip>:8765
+       ```
+
+    4. **Firewall rules.** Both the robot and your development machine must allow traffic on the bridge port. On Linux robots, check `ufw` or `iptables` rules.
+
+    5. **VPN or SSH tunnel.** If the robot is on a different network, you may need a VPN or SSH tunnel:
+
+       ```bash
+       # SSH tunnel for Foxglove Bridge
+       ssh -L 8765:localhost:8765 user@robot-ip
+       ```
+
+       Then connect to `ws://localhost:8765` in Substrate.
+  </Accordion>
+</AccordionGroup>
+
+## Diagnostic Information
+
+If you need to file a bug report, include the following:
+
+- **Substrate version**: Found in **Help > About**.
+- **Operating system and version**.
+- **GPU model and driver version**: Run `vulkaninfo --summary` (Linux/Windows) or check **About This Mac > More Info** (macOS).
+- **Log file**: Located at the paths listed in the "3D Viewer shows a black screen" section above.
+- **Docker version**: Run `docker --version`.

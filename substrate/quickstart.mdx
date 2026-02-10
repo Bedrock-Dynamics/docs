@@ -1,0 +1,115 @@
+---
+title: "Quickstart"
+description: "Your first drone simulation in 5 minutes."
+---
+
+This guide walks you through launching a simulated PX4 quadcopter in Substrate, exploring the 3D viewer, and issuing your first AI-assisted flight command.
+
+<Info>
+  Before you begin, make sure you have [installed Substrate](/substrate/installation) and that [Docker is running](/substrate/installation#system-requirements) on your machine. Substrate will pull the required simulation images automatically on first launch.
+</Info>
+
+<Steps>
+  <Step title="Download and install Substrate">
+    If you have not already, download Substrate from [bedrockdynamics.studio/download](https://bedrockdynamics.studio/download) and follow the [installation instructions](/substrate/installation) for your platform.
+  </Step>
+
+  <Step title="Launch Substrate">
+    Open the application. You will see the editor workspace with a welcome tab. The left sidebar contains icons for the file explorer, search, simulation panel, and other tools.
+  </Step>
+
+  <Step title="Open the Simulation Panel">
+    Click the rocket icon in the left sidebar to open the Simulation panel. You can also open it through the command palette: press <kbd>Cmd+Shift+P</kbd> (macOS) or <kbd>Ctrl+Shift+P</kbd> (Windows/Linux) and type "Simulation".
+  </Step>
+
+  <Step title="Select a drone">
+    In the Simulation panel, choose **PX4 Quadcopter (x500)** from the robot type selector. This configures a standard quadcopter running the PX4 autopilot in Software-In-The-Loop mode with a Gazebo physics environment.
+
+    <Tip>
+      The first time you select a simulation profile, Substrate will download the Docker images for PX4 and Gazebo. This may take a few minutes depending on your internet connection. Subsequent launches use the cached images and start in seconds.
+    </Tip>
+  </Step>
+
+  <Step title="Launch the simulation">
+    Click **Launch**. The SITL status panel appears with readiness indicators that track the simulation startup sequence: Docker container health, Gazebo world loading, PX4 boot, EKF convergence, and GPS lock.
+
+    Wait for all indicators to turn green. This typically takes 10-20 seconds after the containers are cached. When the status reads "Ready", the simulated drone is powered on and waiting for commands.
+  </Step>
+
+  <Step title="Explore the 3D Viewer">
+    The Viewer3D panel opens automatically alongside the simulation. You will see the x500 quadcopter sitting on the ground in the Gazebo world.
+
+    Use these mouse controls to navigate the scene:
+
+    | Action | Control |
+    |--------|---------|
+    | **Orbit** | Left-click and drag |
+    | **Zoom** | Right-click and drag, or scroll wheel |
+    | **Pan** | Middle-click and drag |
+
+    Click on the drone to select it. The entity inspector panel shows the vehicle's pose, sensor list, and joint states.
+  </Step>
+
+  <Step title="Open the AI Assistant">
+    Click the AI chat panel in the right sidebar. The assistant has access to the running simulation and can execute commands directly.
+
+    Try typing:
+
+    ```
+    Take off to 10 meters
+    ```
+
+    The AI agent will arm the vehicle, switch to the appropriate flight mode, and command a takeoff. You will see the drone lift off in the 3D viewer while telemetry plots update in real time.
+
+    <Warning>
+      The AI assistant sends real MAVLink commands to the simulated autopilot. In simulation this is safe to experiment with, but exercise caution if you are connected to physical hardware.
+    </Warning>
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Simulation Management"
+    icon="server"
+    href="/substrate/features/simulation"
+  >
+    Learn about multi-vehicle scenarios, custom world files, and simulation profiles.
+  </Card>
+  <Card
+    title="3D Viewer"
+    icon="cube"
+    href="/substrate/features/3d-viewer"
+  >
+    Explore entity inspection, transform gizmos, TF tree visualization, and scene authoring.
+  </Card>
+  <Card
+    title="Telemetry and Plotting"
+    icon="chart-line"
+    href="/substrate/features/telemetry"
+  >
+    Set up live telemetry plots, drag channels onto chart groups, and synchronize time cursors.
+  </Card>
+  <Card
+    title="AI Assistant"
+    icon="wand-magic-sparkles"
+    href="/substrate/features/ai-assistant"
+  >
+    Learn what the AI agent can do: mission planning, diagnostics, parameter tuning, and more.
+  </Card>
+  <Card
+    title="Flight Review"
+    icon="plane"
+    href="/substrate/features/flight-review"
+  >
+    Open ULog files from real or simulated flights for detailed post-flight analysis.
+  </Card>
+  <Card
+    title="Connect Real Hardware"
+    icon="wifi"
+    href="/substrate/guides/connect-robot"
+  >
+    Connect Substrate to a physical drone or robot over MAVLink or ROS 2.
+  </Card>
+</CardGroup>
