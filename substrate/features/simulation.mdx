@@ -1,58 +1,130 @@
 ---
 title: "Simulation"
-description: "Launch and manage robotics simulations directly from the IDE"
+description: "Launch and manage robotics simulations directly from the IDE."
 ---
 
-Substrate IDE integrates a full simulation environment into your development workflow. Launch Software-In-The-Loop (SITL) simulations, monitor system readiness, and iterate on your robotics code without leaving the editor.
+Substrate integrates simulation into your development workflow. Launch Software-In-The-Loop (SITL) environments, monitor system readiness, and iterate on your code without leaving the editor.
 
 ## Launching a Simulation
 
-Open the **SITL Launcher** panel from the left sidebar. Select your autopilot firmware, robot type, and world configuration, then click **Launch**. Substrate handles the rest.
+Open the **SITL Launcher** panel from the left sidebar. Select a simulation stack, robot model, and world, then click **Launch**. Substrate pulls the container image, allocates ports, and starts the environment automatically.
 
 <CardGroup cols={2}>
-  <Card title="Autopilot Firmware" icon="microchip">
-    PX4 and ArduPilot are supported out of the box. Substrate pulls the correct firmware version and configures the SITL environment automatically.
+  <Card title="Simulation Stacks" icon="layer-group">
+    Pre-configured environments that bundle a physics engine, controller software, and the Substrate bridge into a single Docker image.
   </Card>
-  <Card title="Robot Types" icon="robot">
-    Quadcopters, hexacopters, rovers, robot arms, and custom URDF models. Select from built-in configurations or point to your own model files.
+  <Card title="World Selection" icon="globe">
+    Built-in worlds (empty, warehouse, outdoor terrain), custom SDF files, or Gazebo Fuel worlds referenced by name.
   </Card>
-  <Card title="Physics Engine" icon="atom">
-    Gazebo simulation with selectable world files. Choose from empty worlds, warehouse environments, outdoor terrains, or your own custom SDF worlds.
+  <Card title="Docker Isolation" icon="cube">
+    Each simulation runs in its own container. Substrate manages image pulls, port allocation, and container lifecycle.
   </Card>
-  <Card title="Docker-Based Isolation" icon="cube">
-    Each simulation runs in a Docker container. Substrate pulls and manages simulation stacks automatically -- no manual Docker configuration required.
+  <Card title="Multi-Vehicle" icon="users">
+    Spawn multiple instances in a shared world. Ports are allocated automatically to avoid conflicts.
   </Card>
 </CardGroup>
 
 ## Readiness Monitoring
 
-Once a simulation launches, the readiness panel displays the status of every critical subsystem. Each indicator transitions from red to green as the corresponding system comes online.
+The readiness panel tracks each subsystem as it comes online. Indicators transition from red to green so you know exactly what is ready and what is still initializing.
 
-<AccordionGroup>
-  <Accordion title="Monitored Systems">
-    - **GPS Lock** -- satellite count and fix type
-    - **Compass** -- magnetometer calibration status
-    - **Gyroscope** -- IMU health and data rate
-    - **EKF** -- estimator convergence and innovation flags
-    - **Battery** -- simulated voltage and current
-  </Accordion>
-  <Accordion title="Continuous Health Checks">
-    Health checks run throughout the simulation lifecycle, not just at startup. If the EKF diverges or a sensor feed drops, the corresponding indicator reverts to a warning state so you can diagnose issues immediately.
-  </Accordion>
-</AccordionGroup>
+The checks are evaluated against the running system, not hardcoded to a single platform:
 
-## Fleet Simulation
+| Check | What It Monitors | Applies To |
+|-------|-----------------|------------|
+| **Heartbeat** | Controller communication link and system status | MAVLink vehicles |
+| **State Estimation** | Estimator convergence and innovation flags | Vehicles with inertial navigation |
+| **Localization** | GPS fix, satellite count, or alternative position source | Vehicles requiring global position |
+| **System Status** | Overall controller health | All connected systems |
 
-<Info>
-  Launching multiple simulation instances for fleet testing is available on the **Pro plan**. Each instance runs in its own container with independent readiness monitoring.
-</Info>
+<Note>
+  Readiness checks run continuously. If state estimation diverges or a sensor feed drops during operation, the indicator reverts to a warning state.
+</Note>
 
-## Tips
+---
 
-<Tip>
-  Use `PX4_MODEL=x500` (spawn mode) when configuring PX4 SITL. Do not set `PX4_GZ_MODEL_NAME` -- it enables attach mode, which skips sensor spawning and causes the EKF to stall.
-</Tip>
+## Robot Categories
+
+Substrate organizes simulations into categories based on the type of system you are building. Each category maps to one or more simulation stacks.
+
+<Tabs>
+  <Tab title="Aerial">
+    **Quadcopters, fixed-wing aircraft, and VTOL hybrids.**
+
+    Aerial vehicles use MAVLink for communication and are supported by the PX4 and ArduPilot stacks. Available PX4 models include `x500` (quadrotor), `rc_cessna` (fixed-wing), and `standard_vtol` (hybrid).
+
+    | Stack | Controller | Models |
+    |-------|-----------|--------|
+    | PX4 + Gazebo | PX4 v1.16.1 | x500, x500_depth, rc_cessna, standard_vtol |
+    | ArduPilot + Gazebo | ArduPilot SITL | Copter, Plane, QuadPlane |
+
+    **Multi-vehicle**: Spawn up to 10 vehicles in a shared world. Each instance runs a separate autopilot with Y-axis offset spacing and independent MAVLink ports.
+
+    **Flight commands**: Arm, takeoff, land, go-to waypoint, return to launch, and mode switching are available through the AI assistant and the command palette. See [Flight Modes & Commands](/substrate/reference/flight-modes).
+
+    <Tip>
+      For PX4 stacks, use spawn mode (`PX4_MODEL=x500`). Do not set `PX4_GZ_MODEL_NAME` -- it enables attach mode, which skips sensor spawning and prevents the state estimator from converging.
+    </Tip>
+  </Tab>
+
+  <Tab title="Ground">
+    **Rovers, wheeled vehicles, and tracked platforms.**
+
+    Ground vehicles use MAVLink and are supported by the PX4 and ArduPilot stacks. The PX4 rover model is `r1_rover`.
+
+    | Stack | Controller | Models |
+    |-------|-----------|--------|
+    | PX4 + Gazebo | PX4 v1.16.1 | r1_rover |
+    | ArduPilot + Gazebo | ArduPilot Rover | Various rover frames |
+
+    Ground vehicles use the same readiness monitoring, telemetry, and AI assistant tools as aerial vehicles. Localization checks apply when GPS is available; indoor rovers may rely on alternative position sources.
+  </Tab>
+
+  <Tab title="Manipulation">
+    **Robot arms, grippers, and humanoid robots.**
+
+    Manipulators and humanoid robots use ROS 2 control interfaces and are supported by the MoveIt + Gazebo stack.
+
+    | Stack | Controller | Examples |
+    |-------|-----------|----------|
+    | MoveIt + Gazebo | MoveIt2 + ROS 2 Humble | UR5, Franka, Kinova, custom URDF |
+
+    These systems use joint-state topics and tf2 transforms instead of MAVLink telemetry. The 3D viewer renders joint positions, collision geometry, and sensor data in real time.
+
+    <Note>
+      The MoveIt + Gazebo stack is registered in the launcher but its container image is not yet published. See the [Roadmap](/substrate/roadmap) for status.
+    </Note>
+  </Tab>
+
+  <Tab title="Marine">
+    **Underwater ROVs, AUVs, and surface vessels.**
+
+    Marine vehicles can use MAVLink (BlueROV, ArduSub) or ROS 2 depending on the platform. The PX4 stack includes a `boat` model for surface vehicles.
+
+    | Stack | Controller | Models |
+    |-------|-----------|--------|
+    | PX4 + Gazebo | PX4 v1.16.1 | boat |
+    | ArduPilot + Gazebo | ArduSub | BlueROV2 frames |
+
+    Localization checks adapt to the available position source -- GPS for surface vehicles, DVL or pressure-based depth for underwater systems.
+  </Tab>
+
+  <Tab title="Custom">
+    **User-provided URDF or SDF models.**
+
+    Load your own robot description and simulate it in Gazebo without a specific autopilot stack. Custom models use Gazebo physics directly and can optionally connect a ROS 2 controller.
+
+    Provide your model via:
+    - A local URDF/SDF file loaded through the [Model Browser](/substrate/features/scene-authoring)
+    - A Gazebo Fuel model referenced by name
+    - A custom SDF world file mounted into the container
+
+    See the [Custom Models](/substrate/guides/custom-models) guide for details.
+  </Tab>
+</Tabs>
+
+## Docker Requirements
 
 <Warning>
-  Simulations require Docker to be installed and running on your machine. Substrate will display a clear error if Docker is not available.
+  Simulations require Docker to be installed and running on your machine. Substrate will display a clear error if Docker is not available. See the [Docker Image Reference](/substrate/reference/docker-image) for container details.
 </Warning>

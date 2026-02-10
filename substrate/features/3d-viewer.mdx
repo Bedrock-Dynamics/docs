@@ -1,9 +1,13 @@
 ---
 title: "3D Viewer"
-description: "GPU-accelerated robotics visualization with real-time scene rendering"
+description: "GPU-accelerated robotics visualization for live simulations, MCAP recordings, and ULog flight logs."
 ---
 
-The 3D Viewer renders your simulation scene using the GPU via wgpu, supporting Vulkan, Metal, and DX12 backends. It displays URDF and SDF models, animates joint states from live telemetry, and provides interactive camera controls for inspecting your robot and its environment.
+The 3D Viewer renders robotics scenes using the GPU via wgpu (Vulkan, Metal, DX12). It works with three data sources:
+
+- **Live simulation** -- models, joint states, and sensor data streamed from a running Gazebo environment
+- **MCAP recordings** -- play back previously recorded sessions with synchronized scrubbing across all panels
+- **ULog flight logs** -- PX4 flight data rendered as interpolated 3D pose with attitude and position channels
 
 ## Camera Controls
 
@@ -30,8 +34,8 @@ Camera presets are available from the viewer toolbar:
   <Accordion title="Model Loading">
     The viewer loads URDF and SDF models directly from the simulation or from local files. Meshes, materials, and collision geometries are rendered with correct transforms from the scene graph.
   </Accordion>
-  <Accordion title="Real-Time Joint Animation">
-    Joint states streamed from the simulation are applied to the model in real time. Watch articulated robots move as the controller runs, or scrub through recorded data to inspect motion frame by frame.
+  <Accordion title="Joint Animation">
+    Joint states from live simulations or recorded files are applied to the model. Watch articulated robots move as the controller runs, or scrub through MCAP recordings to inspect motion frame by frame.
   </Accordion>
   <Accordion title="Point Cloud Rendering">
     Lidar and depth sensor data can be displayed as point clouds with configurable color modes (intensity, height, range). Useful for verifying sensor coverage and obstacle detection.
@@ -40,6 +44,10 @@ Camera presets are available from the viewer toolbar:
     Toggle coordinate frame axes to visualize the TF tree. Each frame is drawn at its resolved position and orientation, making it straightforward to debug transform chains between sensors, joints, and the world frame.
   </Accordion>
 </AccordionGroup>
+
+## ULog Pose Rendering
+
+When you open a ULog file, the 3D viewer reconstructs the vehicle's pose from position and attitude channels using binary search and linear interpolation. As you scrub the timeline, the vehicle moves through 3D space in sync with the telemetry plots, GPS map, and log view. This works without a model file -- Substrate renders the pose using the default vehicle mesh.
 
 ## Entity Selection
 

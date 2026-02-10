@@ -1,6 +1,6 @@
 ---
 title: "What is Substrate?"
-description: "Substrate is a native desktop IDE purpose-built for robotics simulation, flight review, and autonomous systems development."
+description: "Substrate is a native desktop IDE purpose-built for robotics simulation, data analysis, and autonomous systems development."
 ---
 
 Substrate is a desktop development environment for robotics engineers. It combines a full code editor, physics simulation management, 3D visualization, and telemetry analysis into a single native application. Instead of switching between a text editor, terminal windows, RViz, PlotJuggler, and QGroundControl, you work in one integrated workspace.
@@ -51,11 +51,11 @@ A typical development cycle in Substrate follows four stages:
     Live and recorded telemetry plots for MAVLink messages, ROS 2 topics, and ULog data. Drag-and-drop channels onto plot groups, synchronize time cursors, and zoom into microsecond-level detail.
   </Card>
   <Card
-    title="Flight Review"
-    icon="plane"
+    title="Data Playback"
+    icon="play"
     href="/substrate/features/flight-review"
   >
-    Open PX4 ULog files for post-flight analysis. Substrate renders the flight path in 3D, plots all logged channels, and synchronizes playback across every panel so you can correlate attitude, position, and actuator data at any point in time.
+    Open ULog files and MCAP recordings with synchronized multi-panel playback. Scrub through time and every panel -- 3D viewer, plots, GPS map, log messages -- updates together.
   </Card>
   <Card
     title="Simulation Management"
@@ -73,11 +73,11 @@ A typical development cycle in Substrate follows four stages:
   </Card>
 </CardGroup>
 
-## Built Different
+## Why It's Fast
 
-Substrate is not an Electron wrapper around web technologies. It is written in Rust with GPU-accelerated rendering via wgpu, giving it native performance characteristics:
+Substrate is written in Rust with GPU-accelerated rendering via wgpu. There is no Electron, no bundled Chromium, and no JavaScript runtime.
 
-- **Zero-latency editing.** The text buffer and input handling run in the UI process on your local machine. Keystrokes never cross a network boundary for basic editing, even when the workspace proxy runs remotely.
-- **GPU-accelerated rendering.** The 3D viewer, text rendering, and UI compositor all run on the GPU through Vulkan, Metal, or DirectX backends. Complex scenes with thousands of entities render at full frame rate.
-- **UI/Proxy architecture.** Heavy operations like LSP communication, file I/O, Docker management, and simulation streaming run in a separate proxy process. The UI thread is never blocked by disk or network activity.
-- **Native memory footprint.** No JavaScript runtime, no bundled Chromium. Substrate typically uses a fraction of the memory required by Electron-based editors.
+- **Local text buffer.** Keystrokes are handled in the UI process on your machine. Editing never crosses a network boundary, even when the workspace proxy runs remotely.
+- **GPU rendering.** The 3D viewer, text rendering, and UI compositor run on the GPU through Vulkan, Metal, or DirectX 12. Complex scenes with thousands of entities render at full frame rate.
+- **Split architecture.** Heavy operations — LSP, file I/O, Docker management, simulation streaming — run in a separate proxy process. The UI thread is never blocked by disk or network activity.
+- **Low memory footprint.** No browser engine means Substrate uses a fraction of the memory of Electron-based tools.
