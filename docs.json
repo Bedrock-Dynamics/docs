@@ -44,6 +44,10 @@
           {
             "group": "Reference",
             "pages": [
+              "substrate/reference/ai-tools",
+              "substrate/reference/flight-modes",
+              "substrate/reference/coordinate-frames",
+              "substrate/reference/docker-image",
               "substrate/reference/keyboard-shortcuts",
               "substrate/reference/supported-platforms",
               "substrate/reference/architecture"
@@ -52,7 +56,9 @@
           {
             "group": "Support",
             "pages": [
-              "substrate/troubleshooting"
+              "substrate/troubleshooting",
+              "substrate/changelog",
+              "substrate/roadmap"
             ]
           }
         ]
@@ -69,6 +75,11 @@
           "anchor": "Download",
           "href": "https://bedrockdynamics.studio/download",
           "icon": "download"
+        },
+        {
+          "anchor": "Docker Hub",
+          "href": "https://hub.docker.com/u/bedrockdynamics",
+          "icon": "docker"
         }
       ]
     }
@@ -101,7 +112,6 @@
   "footer": {
     "socials": {
       "github": "https://github.com/bedrock-dynamics",
-      "docker": "https://hub.docker.com/u/bedrockdynamics",
       "x": "https://x.com/bedrockdynamics"
     }
   }

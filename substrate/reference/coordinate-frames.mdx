@@ -1,0 +1,70 @@
+---
+title: "Coordinate Frames"
+description: "Coordinate frame conventions, quaternion format, and transform tree behavior in Substrate's 3D viewer and telemetry system."
+---
+
+Substrate explicitly tags all position, velocity, and orientation data with a coordinate frame. This removes ambiguity when combining data from multiple sources (Gazebo, MAVLink, GPS) into a single 3D view.
+
+## Supported Frames
+
+| Frame | Full Name | Convention | Used By |
+|-------|-----------|------------|---------|
+| ENU | East-North-Up | X=East, Y=North, Z=Up | Gazebo, ROS 2, Substrate 3D viewer (canonical) |
+| NED | North-East-Down | X=North, Y=East, Z=Down | MAVLink, PX4, ArduPilot |
+| FLU | Forward-Left-Up | X=Forward, Y=Left, Z=Up | ROS 2 body frame |
+| FRD | Forward-Right-Down | X=Forward, Y=Right, Z=Down | MAVLink/PX4 body frame |
+| ECEF | Earth-Centered Earth-Fixed | Geocentric Cartesian | GPS coordinate transforms |
+| LLA | Latitude-Longitude-Altitude | Geodetic coordinates | GPS raw data |
+
+**Canonical frame**: Substrate's 3D viewer uses **ENU**. Data arriving in other frames is converted to ENU before display.
+
+<Note>
+  Different data sources use different frames. Gazebo publishes in ENU, MAVLink telemetry arrives in NED, and GPS data comes as LLA. Substrate converts all data to ENU for display in the 3D viewer.
+</Note>
+
+## Quaternion Convention
+
+All orientations use the Hamilton quaternion convention: **[x, y, z, w]** with w as the scalar component. This matches the ROS 2 convention.
+
+## Transform Types
+
+### Transform3D
+
+Scene graph nodes carry a `Transform3D` with three components:
+
+- **position** -- `[x, y, z]` in meters
+- **orientation** -- `[x, y, z, w]` quaternion (Hamilton, ROS 2-compatible)
+- **scale** -- `[sx, sy, sz]`, default `[1.0, 1.0, 1.0]`
+
+### Transform4x4
+
+Internal 4x4 homogeneous matrices use **column-major** storage order for GPU shader (WGSL) compatibility. They are constructed from a translation vector, a rotation quaternion, and an optional scale.
+
+## TF Tree
+
+Substrate maintains a ROS 2-style transform tree that tracks parent-child relationships between coordinate frames.
+
+**Dynamic transforms** are time-indexed and support SLERP interpolation for smooth playback. These are used for moving entities such as drone pose and joint angles.
+
+**Static transforms** are timeless and used for fixed sensor extrinsics. Sensor frames matching patterns like `CAM_*`, `LIDAR_*`, `RADAR_*`, `IMU_*`, `GPS_*`, and `GNSS_*` relative to `base_link` are automatically promoted to static transforms.
+
+**Hierarchical paths** follow ROS 2/Rerun convention -- slash-separated paths like `world/drone/base_link/body_visual`. Each node tracks its `parent_path` for transform chain resolution.
+
+### Lookup Algorithm
+
+1. Direct lookup for parent-child pairs
+2. BFS chain resolution for multi-hop transforms
+3. SLERP interpolation for rotations, linear interpolation for positions (100ms default tolerance)
+4. Quantized timestamp caching (~10ms buckets) with a generation counter for change detection
+
+<Tip>
+  Use the `query_tf_tree` AI tool to inspect the current frame hierarchy or look up a transform between any two frames.
+</Tip>
+
+## Pose Streaming
+
+Scene geometry is sent once. Pose updates stream at 60Hz as transform-only updates with no geometry re-send, following the Rerun entity-component pattern.
+
+## GOTO Coordinates
+
+The `flight_goto` AI tool accepts coordinates in **ENU meters relative to the home position**. The simulation bridge converts to MAVLink's NED frame internally.

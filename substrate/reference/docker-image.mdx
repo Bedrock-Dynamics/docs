@@ -1,0 +1,131 @@
+---
+title: "Docker Image Reference"
+description: "Configuration reference for the bedrockdynamics/substrate-sim simulation container — environment variables, ports, installed software, and startup sequence."
+---
+
+The simulation container packages PX4 SITL, Gazebo Harmonic, ROS 2 Humble, and the substrate-sim-bridge into a single image. Substrate pulls and manages this container automatically, but you can also run it manually or customize it.
+
+## Image Tags
+
+| Tag | Description |
+|-----|-------------|
+| `px4-gazebo-humble` | PX4 autopilot + Gazebo Harmonic + ROS 2 Humble (default) |
+| `ardupilot-gazebo-humble` | ArduPilot SITL + Gazebo (planned) |
+| `moveit-gazebo-humble` | MoveIt2 manipulation + Gazebo (planned) |
+| `latest` | Alias for the most recent build |
+
+<Tabs>
+  <Tab title="Docker Hub">
+    ```
+    bedrockdynamics/substrate-sim
+    ```
+  </Tab>
+  <Tab title="GHCR">
+    ```
+    ghcr.io/bedrock-dynamics/substrate-sim
+    ```
+  </Tab>
+</Tabs>
+
+## Installed Software
+
+| Software | Version |
+|----------|---------|
+| Ubuntu | 22.04 |
+| PX4 SITL | v1.16.1 |
+| Gazebo | Harmonic (stable) |
+| ROS 2 | Humble |
+| Python | 3.x |
+| MAVSDK (Python) | 2.0.1 |
+| DroneKit | 2.9.2 |
+| pymavlink | latest |
+
+ROS 2 packages included: `ros-humble-ros-base`, `geometry-msgs`, `sensor-msgs`, `nav-msgs`, `tf2-ros`, `tf2-geometry-msgs`, `mavros`, `mavros-msgs`.
+
+## Ports
+
+| Port | Protocol | Service |
+|------|----------|---------|
+| 14550 | UDP | MAVLink GCS (ground control) |
+| 14540 | UDP | MAVLink Offboard (MAVSDK / external control) |
+| 9090 | TCP | Scene gRPC (bridge) |
+| 9091 | TCP | Telemetry gRPC |
+
+<Tip>
+  Multi-instance port allocation: each additional instance offsets MAVLink ports by +10 and bridge ports by +2.
+</Tip>
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PX4_MODEL` | `x500` | Vehicle model: `x500`, `x500_depth`, `rc_cessna`, `standard_vtol`, `r1_rover`, `boat` |
+| `PX4_WORLD` | `default` | Gazebo world: `default`, `empty`, or a Gazebo Fuel world name |
+| `GZ_WORLD` | (none) | Alternative world override (takes precedence over `PX4_WORLD`) |
+| `VEHICLE_COUNT` | `1` | Number of vehicles to spawn |
+| `SPAWN_OFFSET` | `2.0` | Y-axis spacing in meters between vehicles |
+| `SITL_INSTANCE` | `0` | Instance number for multi-instance setups |
+| `MAVLINK_GCS_PORT` | `14550` | GCS MAVLink port |
+| `MAVLINK_OFFBOARD_PORT` | `14540` | Offboard MAVLink port |
+| `BRIDGE_PORT` | `9090` | gRPC bridge port |
+| `BRIDGE_WAIT_FOR_MODEL` | (auto) | Model name the bridge waits for. Default: `{PX4_MODEL}_{INSTANCE}` |
+| `HEADLESS` | `1` | Disable Gazebo GUI (always 1 in container) |
+
+<Warning>
+  Do **not** set `PX4_GZ_MODEL_NAME` -- it enables attach mode which skips sensor spawning, causing EKF to have no data and the autopilot to remain stuck at `MAV_STATE_UNINIT`.
+</Warning>
+
+## Volume Mounts
+
+| Mount | Purpose |
+|-------|---------|
+| `~/.gz:/root/.gz:rw` | Gazebo Fuel cache (auto-mounted by Substrate) |
+| `<workspace>:/workspaces/<folder>:rw` | IDE workspace integration |
+| `/custom/worlds` | User-provided SDF world files (read-only) |
+| `/custom/models` | User-provided model files (read-only) |
+
+## Resource Limits
+
+Default allocation: 4 CPUs, 4 GB memory. Configurable via Substrate's `DockerSimConfig`.
+
+## Startup Sequence
+
+1. Source ROS 2 environment
+2. Validate world file (warns if Fuel download is needed)
+3. Launch PX4 SITL (`make px4_sitl gz_{model}`)
+4. Wait for PX4 + Gazebo + MAVLink port (up to 120 s)
+5. Configure SITL parameters via MAVSDK (disable battery checks, supply check bypass)
+6. Start substrate-sim-bridge
+7. Enter process monitoring loop (5 s health checks, graceful shutdown on `SIGTERM`)
+
+<Note>
+  For multi-instance setups, instance 0 spawns Gazebo. Instances 1+ use `PX4_GZ_STANDALONE=1` and apply a Y-axis offset based on `SPAWN_OFFSET`.
+</Note>
+
+## Manual Usage
+
+```bash
+# Pull the image
+docker pull bedrockdynamics/substrate-sim:px4-gazebo-humble
+
+# Run with default settings
+docker run -d \
+  -p 14550:14550/udp \
+  -p 14540:14540/udp \
+  -p 9090:9090 \
+  -p 9091:9091 \
+  -e PX4_MODEL=x500 \
+  -e PX4_WORLD=default \
+  --add-host host.docker.internal:host-gateway \
+  bedrockdynamics/substrate-sim:px4-gazebo-humble
+
+# Run with custom world
+docker run -d \
+  -p 14550:14550/udp \
+  -p 9090:9090 \
+  -e PX4_MODEL=x500 \
+  -e PX4_WORLD=baylands \
+  -v ~/.gz:/root/.gz:rw \
+  --add-host host.docker.internal:host-gateway \
+  bedrockdynamics/substrate-sim:px4-gazebo-humble
+```

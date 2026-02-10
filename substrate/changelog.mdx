@@ -1,0 +1,32 @@
+---
+title: "Changelog"
+description: "Release history and recent changes to Substrate."
+---
+
+Substrate uses [semantic versioning](https://semver.org/). The changelog is updated automatically with each release via [release-please](https://github.com/googleapis/release-please). The current version is **0.1.1**, with 35 tagged releases from `v0.0.1` through `v0.4.5`.
+
+<Note>
+  Changes listed under "Latest Changes" have been merged but not yet included in a tagged release.
+</Note>
+
+## Latest Changes
+
+### Scene Authoring
+
+- **Entity inspector** with live data display, physics properties, joint configuration, sensor previews, and collision geometry overlays.
+- **Transform gizmo** with translate and rotate modes, GPU-pickable axis handles, screen-space scaling (80px), and 30 Hz update throttling.
+- **Model browser** with local Gazebo Fuel cache scanning, thumbnail previews, remote Fuel API search with debounced queries, and spawn-at-camera-focus for local models.
+- **Context menu** on right-click in the 3D viewer: Focus, Inspect, Duplicate, Delete, and Copy Pose actions.
+- **SDF material backfill** to fill missing material properties from SDF defaults, along with a proto alpha channel fix for transparent surfaces.
+
+### Session Persistence
+
+- **Workspace session save/restore**: panel layout, open editors, and active simulation configuration are saved on close and restored on the next launch.
+- **Plot subscription persistence**: telemetry channel subscriptions and plot group assignments survive across sessions.
+- **Layout preset tracking**: save and recall named panel arrangements.
+
+### UX Improvements
+
+- **Cross-panel hover sync**: hovering a timestamp in a telemetry plot highlights the corresponding position in the 3D viewer and other synchronized panels.
+- **Startup progress indicators**: visual feedback during Docker image pulls, simulation boot, and bridge initialization.
+- **Readiness toasts**: notifications when simulation subsystems (GPS, EKF, compass) transition to ready state.

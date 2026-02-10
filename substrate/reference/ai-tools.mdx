@@ -1,0 +1,667 @@
+---
+title: "AI Tool Reference"
+description: "Complete reference for all 44 tools available to the Substrate AI Assistant"
+---
+
+The Substrate AI Assistant has access to **44 tools** organized into 9 categories. These tools let the agent read and edit code, launch and control simulations, capture and analyze visuals, and explore live data -- all from a natural language conversation.
+
+<Note>
+  Tools marked with **Requires Approval** will show a diff or confirmation dialog before executing. The assistant cannot bypass this -- you always have the final say on file modifications.
+</Note>
+
+## Code Editing & Exploration
+
+10 tools for navigating and modifying your workspace.
+
+<AccordionGroup>
+  <Accordion title="glob" icon="magnifying-glass">
+    Find files by glob pattern.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `pattern` | string | Yes | Glob pattern (e.g. `**/*.rs`, `src/**/mod.rs`) |
+    | `path` | string | No | Directory to search from (defaults to workspace root) |
+
+    **Returns:** List of matching file paths (capped at 1,000 files).
+
+    **Example prompt:** *"Find all Python files under the scripts directory."*
+  </Accordion>
+
+  <Accordion title="grep" icon="code">
+    Search file contents with regex.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `pattern` | string | Yes | Regular expression to match |
+    | `path` | string | No | Directory or file to search |
+    | `glob_filter` | string | No | Limit to files matching this glob |
+    | `case_insensitive` | bool | No | Ignore case when matching |
+
+    **Returns:** Matching lines with file paths and line numbers (capped at 500 matches).
+
+    **Example prompt:** *"Search for all usages of `spawn_entity` in the Rust source."*
+  </Accordion>
+
+  <Accordion title="read_file" icon="file">
+    Read a file with line numbers.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `file_path` | string | Yes | Absolute path to the file |
+    | `offset` | int | No | Starting line number |
+    | `limit` | int | No | Number of lines to read (default 256) |
+
+    **Returns:** File content with line numbers.
+
+    **Example prompt:** *"Show me lines 100-200 of dispatch.rs."*
+  </Accordion>
+
+  <Accordion title="read_file_ast" icon="sitemap">
+    AST-based file reading that chunks at function and class boundaries using Tree-sitter.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `file_path` | string | Yes | Absolute path to the file |
+    | `token_budget` | int | No | Maximum tokens to return (default 1,000) |
+
+    **Returns:** Semantic chunks of the file (functions, classes, structs) within the token budget.
+
+    **Example prompt:** *"Read the structure of window_tab.rs -- just the function signatures."*
+  </Accordion>
+
+  <Accordion title="edit_file" icon="pen-to-square">
+    Replace content in a file with 4-level fuzzy matching: exact, CRLF-normalized, whitespace-normalized, and Jaro-Winkler (80% threshold).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `file_path` | string | Yes | File to edit |
+    | `old_content` | string | Yes | Content to find and replace |
+    | `new_content` | string | Yes | Replacement content |
+
+    **Returns:** Confirmation with diff of the change.
+
+    <Warning>**Requires user approval.** The edit is shown as a diff for review before applying.</Warning>
+
+    **Example prompt:** *"Change the default altitude from 5 to 10 meters in the takeoff handler."*
+  </Accordion>
+
+  <Accordion title="write_file" icon="file-circle-plus">
+    Create a new file or overwrite an existing one.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `file_path` | string | Yes | Path to create or overwrite |
+    | `content` | string | Yes | Full file content |
+
+    **Returns:** Confirmation of write.
+
+    <Warning>**Requires user approval.** File content is shown for review before writing.</Warning>
+
+    **Example prompt:** *"Create a new Python script at scripts/waypoint_mission.py with a basic MAVSDK takeoff sequence."*
+  </Accordion>
+
+  <Accordion title="create_plan" icon="list-check">
+    Create an implementation plan for user review before making changes.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `file_path` | string | Yes | Where to save the plan |
+    | `content` | string | Yes | Plan content |
+    | `title` | string | Yes | Plan title |
+
+    **Returns:** The rendered plan for approval.
+
+    **Example prompt:** *"Draft a plan for adding GPS fence support to the flight controller."*
+  </Accordion>
+
+  <Accordion title="bash" icon="terminal">
+    Execute a shell command in the workspace directory.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `command` | string | Yes | Shell command to run |
+    | `timeout_ms` | int | No | Timeout in milliseconds (default 120,000; max 300,000) |
+
+    **Returns:** stdout and stderr output.
+
+    **Example prompt:** *"Run cargo test for the lapce-rpc crate."*
+  </Accordion>
+
+  <Accordion title="repo_map" icon="diagram-project">
+    Generate a PageRank-based symbol ranking across the codebase using Tree-sitter.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `path` | string | No | Root directory (defaults to workspace) |
+    | `token_budget` | int | No | Max tokens (default 1,000) |
+    | `file_patterns` | list | No | Glob patterns to include |
+
+    **Returns:** Ranked list of the most interconnected symbols (functions, types, traits).
+
+    **Example prompt:** *"Show me the most important symbols in the simulation module."*
+  </Accordion>
+
+  <Accordion title="task" icon="code-branch">
+    Spawn a sub-agent with isolated context for parallel work.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `description` | string | Yes | What the sub-agent should accomplish |
+    | `prompt` | string | Yes | Detailed instructions |
+    | `mode` | string | Yes | `"explore"`, `"search"`, or `"edit"` |
+    | `model` | string | No | Model override |
+
+    `explore` and `search` modes use Haiku for speed. `edit` mode uses Sonnet for accuracy.
+
+    **Returns:** Sub-agent result.
+
+    **Example prompt:** *"Search the codebase for how MAVLink heartbeats are parsed."*
+  </Accordion>
+</AccordionGroup>
+
+## Simulation Lifecycle
+
+5 tools for launching, monitoring, and querying simulation status.
+
+<AccordionGroup>
+  <Accordion title="start_simulation" icon="rocket">
+    Launch a PX4 SITL simulation in Docker.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `model` | string | Yes | `x500`, `iris`, `rc_cessna`, `standard_vtol`, or `r1_rover` |
+    | `world` | string | No | `default`, `baylands`, `warehouse`, or a Gazebo Fuel name |
+    | `vehicle_count` | int | No | Number of vehicles (1--10) |
+    | `workspace_path` | string | No | Host path to mount into the container |
+
+    **Returns:** Container name and initial status.
+
+    **Example prompt:** *"Start a simulation with two x500 drones in the baylands world."*
+  </Accordion>
+
+  <Accordion title="list_simulations" icon="list">
+    Find running simulation containers.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `model` | string | No | Filter by vehicle model |
+    | `world` | string | No | Filter by world name |
+
+    **Returns:** List of containers with `container_name`, `readiness_state`, and metadata.
+
+    **Example prompt:** *"Are there any simulations running right now?"*
+  </Accordion>
+
+  <Accordion title="wait_for_simulation_ready" icon="spinner">
+    Block until the simulation reaches a target readiness state.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `container_name` | string | Yes | Container to wait on |
+    | `target_state` | string | No | Default `ReadyToArm` |
+    | `timeout_secs` | int | No | Default 60, max 120 |
+
+    Readiness states in order: `Launching` > `BridgeConnected` > `WorldLoaded` > `Rendering` > `AutopilotConnected` > `ReadyToArm` > `FullyOperational`.
+
+    **Returns:** Final readiness state when target is reached, or timeout error.
+
+    **Example prompt:** *"Wait until the simulation is ready to arm."*
+  </Accordion>
+
+  <Accordion title="get_readiness_details" icon="heart-pulse">
+    MAVLink-level diagnostics: heartbeat status, GPS fix type, EKF convergence, and arm readiness.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `container_name` | string | No | Container to query (defaults to active) |
+
+    Runs proxy-local with no UI round-trip for minimal latency.
+
+    **Returns:** Structured MAVLink health snapshot.
+
+    **Example prompt:** *"Why can't I arm? Show me the readiness details."*
+  </Accordion>
+
+  <Accordion title="get_simulation_state" icon="gauge">
+    Combined readiness, telemetry, and background task status in a single call.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `container_name` | string | No | Container to query (defaults to active) |
+
+    **Returns:** Readiness state, current telemetry snapshot, and background task summary.
+
+    **Example prompt:** *"Give me a full status check of the current simulation."*
+  </Accordion>
+</AccordionGroup>
+
+## Flight Control
+
+6 tools for MAVLink-based vehicle command. All send MAVLink `COMMAND_LONG` messages to PX4.
+
+<AccordionGroup>
+  <Accordion title="flight_arm" icon="power-off">
+    Arm or disarm motors. Sends `MAV_CMD_COMPONENT_ARM_DISARM` (400).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+    | `arm` | bool | Yes | `true` to arm, `false` to disarm |
+
+    **Example prompt:** *"Arm the drone."*
+  </Accordion>
+
+  <Accordion title="flight_takeoff" icon="plane-departure">
+    Takeoff to a target altitude. Sends `MAV_CMD_NAV_TAKEOFF` (22).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+    | `altitude_meters` | float | No | Altitude in meters, 1--120 (default 5) |
+
+    **Example prompt:** *"Take off to 15 meters."*
+  </Accordion>
+
+  <Accordion title="flight_land" icon="plane-arrival">
+    Land at the current position. Sends `MAV_CMD_NAV_LAND` (21).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+
+    **Example prompt:** *"Land the drone."*
+  </Accordion>
+
+  <Accordion title="flight_goto" icon="location-dot">
+    Navigate to a waypoint in ENU coordinates. Sends `MAV_CMD_DO_REPOSITION` (192).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+    | `x` | float | Yes | East position (meters) |
+    | `y` | float | Yes | North position (meters) |
+    | `z` | float | Yes | Up position (meters) |
+
+    **Example prompt:** *"Fly to position 10, 5, 20."*
+  </Accordion>
+
+  <Accordion title="flight_set_mode" icon="sliders">
+    Switch PX4 flight mode. Sends `MAV_CMD_DO_SET_MODE` (176).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+    | `mode` | string | Yes | Flight mode name |
+
+    Supported modes: `MANUAL`, `ALTCTL`/`ALTITUDE`, `POSCTL`/`POSITION`, `OFFBOARD`, `STABILIZED`/`STABILIZE`, `HOLD`/`LOITER`, `MISSION`, `RTL`/`RETURN`, `LAND`, `TAKEOFF`, `GUIDED` (maps to `POSCTL`).
+
+    **Example prompt:** *"Switch to position hold mode."*
+  </Accordion>
+
+  <Accordion title="flight_return_to_launch" icon="house">
+    Return to launch position. Sends `MAV_CMD_NAV_RETURN_TO_LAUNCH` (20).
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+
+    **Example prompt:** *"Return to home."*
+  </Accordion>
+</AccordionGroup>
+
+## Simulation Control
+
+3 tools for playback, camera, and in-container command execution.
+
+<AccordionGroup>
+  <Accordion title="sim_control" icon="play">
+    Control simulation playback.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `action` | string | Yes | `pause`, `resume`, `step`, `reset`, or `set_speed` |
+    | `frames` | int | No | Number of frames to advance (for `step`) |
+    | `multiplier` | float | No | Speed multiplier (for `set_speed`) |
+
+    **Example prompt:** *"Pause the simulation and step forward 10 frames."*
+  </Accordion>
+
+  <Accordion title="camera_control" icon="video">
+    Control the 3D viewer camera.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `action_type` | string | Yes | `set_preset`, `orbit`, `set_distance`, `look_at`, or `follow_entity` |
+    | `preset` | string | No | `front`, `back`, `left`, `right`, `top`, `bottom`, `isometric` |
+    | `azimuth_delta` | float | No | Horizontal orbit delta (for `orbit`) |
+    | `elevation_delta` | float | No | Vertical orbit delta (for `orbit`) |
+    | `distance` | float | No | Camera distance (for `set_distance`) |
+    | `x`, `y`, `z` | float | No | Target point (for `look_at`) |
+    | `entity_name` | string | No | Entity to track (for `follow_entity`) |
+
+    **Example prompt:** *"Follow the drone from an isometric angle."*
+  </Accordion>
+
+  <Accordion title="sim_exec" icon="terminal">
+    Run a command synchronously inside the simulation Docker container.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target container |
+    | `command` | string | Yes | Shell command to execute |
+    | `timeout_ms` | int | No | Timeout (default 120,000; max 300,000) |
+    | `workdir` | string | No | Working directory inside the container |
+
+    Pre-installed software: MAVSDK 2.0.1, DroneKit 2.9.2, pymavlink, ROS 2 Humble, Gazebo Harmonic, PX4 v1.16.1.
+
+    **Example prompt:** *"Run `ros2 topic list` inside the simulation container."*
+  </Accordion>
+</AccordionGroup>
+
+## Background Tasks
+
+6 tools for running long operations without blocking the conversation.
+
+<AccordionGroup>
+  <Accordion title="sim_exec_background" icon="gears">
+    Run a command asynchronously inside the simulation container.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target container |
+    | `command` | string | Yes | Shell command to execute |
+    | `timeout_ms` | int | No | Timeout (max 600,000) |
+    | `workdir` | string | No | Working directory inside the container |
+
+    **Returns:** `task_id` immediately. Use `check_background_task` or `wait_for_any` to get results.
+
+    **Example prompt:** *"Run the MAVSDK waypoint mission script in the background."*
+  </Accordion>
+
+  <Accordion title="start_background_task" icon="hourglass-start">
+    Start a long-running managed task.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `kind` | string | Yes | `WaitSimulationReady`, `AnalyzeVideo`, or `BashExecution` |
+    | `notify_on_complete` | bool | No | Whether to notify when done |
+
+    **Returns:** `task_id`.
+
+    **Example prompt:** *"Start waiting for the simulation to be ready in the background."*
+  </Accordion>
+
+  <Accordion title="wait_for_any" icon="clock">
+    Wait for ANY of the given background tasks to complete.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `task_ids` | list | Yes | Task IDs to wait on |
+    | `timeout_ms` | int | No | Timeout (default 60,000; max 300,000) |
+
+    **Returns:** The first completed task's result.
+
+    **Example prompt:** *"Wait for either the build or the simulation startup to finish."*
+  </Accordion>
+
+  <Accordion title="check_background_task" icon="circle-check">
+    Check the status of a background task.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `task_id` | string | Yes | Task to check |
+    | `block` | bool | No | Block until complete |
+    | `timeout_ms` | int | No | Timeout when blocking |
+
+    Task states: `Pending`, `Running`, `Complete`, `Failed`, `Cancelled`.
+
+    **Returns:** Current state and output if complete.
+
+    **Example prompt:** *"Is the waypoint mission script still running?"*
+  </Accordion>
+
+  <Accordion title="cancel_background_task" icon="ban">
+    Cancel a running background task.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `task_id` | string | Yes | Task to cancel |
+
+    **Example prompt:** *"Cancel the background mission script."*
+  </Accordion>
+
+  <Accordion title="list_background_tasks" icon="list-check">
+    List all background tasks with their current status.
+
+    No parameters.
+
+    **Returns:** All tasks with IDs, kinds, and states.
+
+    **Example prompt:** *"Show me all background tasks."*
+  </Accordion>
+</AccordionGroup>
+
+## Data Exploration
+
+5 tools for inspecting live simulation data.
+
+<AccordionGroup>
+  <Accordion title="browse_topics" icon="database">
+    List available data topics from the simulation.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `category` | string | No | Filter: `Image`, `PointCloud`, `JointState`, `Telemetry`, `Transform`, `Marker`, `Annotation`, `Log`, `LaserScan`, `Other` |
+
+    **Returns:** Topic names, types, and update rates.
+
+    **Example prompt:** *"What telemetry topics are available?"*
+  </Accordion>
+
+  <Accordion title="get_telemetry" icon="chart-line">
+    Get the current telemetry snapshot: pose, velocity, battery, and flight mode.
+
+    No parameters.
+
+    **Returns:** Latest telemetry values.
+
+    **Example prompt:** *"What's the drone's current altitude and battery level?"*
+  </Accordion>
+
+  <Accordion title="get_telemetry_samples" icon="chart-area">
+    Read time-series data for a telemetry channel.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `channel_path` | string | Yes | Channel name (supports suffix matching, e.g. `position.z`) |
+    | `max_samples` | int | No | Max data points (default 200, max 1,000) |
+
+    **Returns:** Auto-downsampled ring buffer data with min, max, unit, and time range.
+
+    **Example prompt:** *"Plot the altitude over the last 30 seconds."*
+  </Accordion>
+
+  <Accordion title="query_scene_graph" icon="sitemap">
+    Query the entity hierarchy from the 3D viewer.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `path_prefix` | string | No | Filter to a subtree (e.g. `/world/default/x500_0`) |
+
+    **Returns:** Entity list with `entity_id`, `path`, and `parent_path`.
+
+    **Example prompt:** *"Show me all entities under the x500 model."*
+  </Accordion>
+
+  <Accordion title="query_tf_tree" icon="project-diagram">
+    Query the transform (TF) hierarchy or look up a specific frame transform.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `source_frame` | string | No | Source coordinate frame |
+    | `target_frame` | string | No | Target coordinate frame |
+    | `time` | float | No | Timestamp for the lookup |
+
+    **Hierarchy mode** (no args): returns the full parent-child frame tree. **Lookup mode** (with frames): returns a 4x4 transform matrix.
+
+    **Example prompt:** *"What's the transform from the base_link to the camera frame?"*
+  </Accordion>
+</AccordionGroup>
+
+## Vision & Recording
+
+5 tools for visual capture and AI-powered analysis.
+
+<AccordionGroup>
+  <Accordion title="capture_screenshot" icon="camera">
+    Capture a PNG screenshot of the 3D viewer. Returns binary image content directly (bypasses output truncation).
+
+    No parameters.
+
+    **Returns:** PNG image as `BinaryContent`.
+
+    **Example prompt:** *"Take a screenshot of the viewer."*
+  </Accordion>
+
+  <Accordion title="analyze_screenshot" icon="eye">
+    Capture a screenshot and analyze it with Gemini vision.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `prompt` | string | Yes | What to look for in the image |
+
+    **Returns:** Vision model analysis of the captured frame.
+
+    **Example prompt:** *"Take a screenshot and check if the drone is hovering level."*
+  </Accordion>
+
+  <Accordion title="start_recording" icon="circle-dot">
+    Begin video recording of the 3D viewer.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `max_duration_secs` | int | No | Maximum duration (default 30, max 30) |
+
+    **Returns:** Confirmation that recording started.
+
+    **Example prompt:** *"Start recording the viewer for 20 seconds."*
+  </Accordion>
+
+  <Accordion title="stop_recording" icon="stop">
+    Stop the current video recording.
+
+    No parameters.
+
+    **Returns:** Path to the saved video file.
+
+    **Example prompt:** *"Stop recording."*
+  </Accordion>
+
+  <Accordion title="analyze_video" icon="film">
+    Analyze a recorded video with Gemini vision.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `video_path` | string | Yes | Path to the video file |
+    | `prompt` | string | Yes | What to analyze |
+    | `background` | bool | No | Run analysis as a background task |
+
+    Videos under 5 MB use frame extraction. Videos 5 MB and above are uploaded via the Gemini File API.
+
+    **Example prompt:** *"Analyze the recording and tell me if the landing was smooth."*
+  </Accordion>
+</AccordionGroup>
+
+## Scene Authoring
+
+3 tools for modifying the simulation scene at runtime.
+
+<AccordionGroup>
+  <Accordion title="spawn_entity" icon="cube">
+    Spawn a Gazebo model into the scene.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+    | `model_id` | string | Yes | Gazebo model identifier |
+    | `entity_name` | string | Yes | Name for the spawned entity |
+    | `x`, `y`, `z` | float | Yes | Spawn position (meters) |
+
+    **Example prompt:** *"Spawn a construction barrel at position 5, 3, 0."*
+  </Accordion>
+
+  <Accordion title="remove_entity" icon="trash">
+    Remove an entity from the scene.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `simulation_id` | string | Yes | Target simulation |
+    | `entity_id` | string | Yes | Entity to remove |
+
+    **Example prompt:** *"Remove the barrel I just spawned."*
+  </Accordion>
+
+  <Accordion title="get_followable_entities" icon="crosshairs">
+    List entities that have dynamic pose updates (suitable for camera follow).
+
+    No parameters.
+
+    **Returns:** Entity names with active pose streams.
+
+    **Example prompt:** *"Which entities can I follow with the camera?"*
+  </Accordion>
+</AccordionGroup>
+
+## Web
+
+1 tool for fetching external content.
+
+<AccordionGroup>
+  <Accordion title="fetch" icon="globe">
+    Fetch a URL with pagination support.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `url` | string | Yes | URL to fetch |
+    | `max_length` | int | No | Max content length (default 5,000) |
+    | `start_index` | int | No | Pagination offset (default 0) |
+    | `raw` | bool | No | Return raw response (for JSON APIs); otherwise HTML is converted to Markdown |
+
+    **Returns:** Fetched content as Markdown or raw text.
+
+    **Example prompt:** *"Fetch the PX4 parameter reference for EKF2_HGT_REF."*
+  </Accordion>
+</AccordionGroup>
+
+## Safety & Security
+
+<Tabs>
+  <Tab title="User Approval">
+    Two tools require explicit user approval before executing:
+
+    | Tool | Approval Type |
+    |------|--------------|
+    | `edit_file` | Diff shown for review |
+    | `write_file` | Full content shown for review |
+
+    The assistant cannot modify files without your confirmation. Edits are presented as diffs in the chat panel so you can accept, reject, or request changes.
+  </Tab>
+  <Tab title="Execution Boundaries">
+    - **bash** runs in your workspace directory with enforced timeouts (max 5 minutes)
+    - **sim_exec** and **sim_exec_background** run inside the Docker simulation container, not on your host machine. Commands are validated by `ExecutionTarget::validate()` before execution
+    - **File access** inside containers is restricted to: `/tmp/sim_*`, `~/.gz/`, `~/PX4-Autopilot/`, `~/.ros/log/`
+    - **Path validation** via `resolve_path()` prevents directory traversal attacks
+  </Tab>
+  <Tab title="Model Tiers">
+    | Tier | Model | Best For |
+    |------|-------|----------|
+    | **Standard** (default) | Claude Sonnet | Routine questions, parameter lookups, straightforward debugging |
+    | **Max** | Claude Opus | Complex multi-step reasoning, architecture decisions, deep analysis |
+
+    Sub-agents spawned by the `task` tool use Haiku for `explore` and `search` modes (optimized for speed) and Sonnet for `edit` mode (optimized for accuracy).
+  </Tab>
+</Tabs>
+
+<Tip>
+  You can ask the assistant "what tools do you have?" at any time. It will summarize its available capabilities based on the current simulation state.
+</Tip>

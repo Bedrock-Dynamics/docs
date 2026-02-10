@@ -1,0 +1,34 @@
+---
+title: "Roadmap"
+description: "Planned features and improvements for Substrate."
+---
+
+This page documents features that are planned, in progress, or under consideration. Items are sourced from the codebase, existing documentation, and gap analysis. Status labels indicate how far along each item is.
+
+## In Progress
+
+These items have partial implementations in the codebase today.
+
+- **Scale gizmo mode.** The `GizmoMode` enum currently defines `Translate` and `Rotate` variants. Scale is the next planned mode, requiring box-handle rendering and per-axis scale drag math. The infrastructure for mode switching already exists.
+- **Entity inspector expansion.** The inspector currently shows pose data and basic property overviews. Full editing of physics properties (mass, friction, inertia tensors), sensor configuration parameters, and joint limits is partially scaffolded but not yet wired to the bridge protocol.
+- **Remote model thumbnails.** The Model Browser displays thumbnails for locally cached Gazebo Fuel models. Remote search results do not yet render preview images. Camera-focus spawning works for local models; remote models still spawn at the world origin.
+
+## Planned
+
+These items are confirmed in the codebase or documentation as upcoming work.
+
+- **MuJoCo physics integration.** Listed as "Planned" in the [Supported Platforms](/substrate/reference/supported-platforms) compatibility matrix. Will add MuJoCo as an alternative physics backend alongside Gazebo.
+- **ArduPilot SITL simulation stack.** The `ardupilot-gazebo-humble` tag is registered in the simulation stack list and the ArduPilot bridge module (`ardupilot_bridge.rs`) is implemented, but the Docker image is not yet published. Once available, it will support Copter, Rover, and Plane SITL variants.
+- **MoveIt + Gazebo manipulation stack.** The `moveit-gazebo-humble` tag is registered in the simulation stack list for robotic arm and manipulation workflows. The Docker image is not yet built.
+
+## Under Consideration
+
+These features are not yet in the codebase but would fill gaps in the current experience. They are informed by the existing architecture and common robotics development workflows.
+
+- **Per-panel reference documentation.** Individual documentation pages for each panel type (3D Viewer settings, Telemetry plot configuration, Terminal behavior, Log Viewer filters) to complement the current feature-level guides.
+- **Layout management.** Save, share, and import panel arrangements as named presets. The session persistence system already saves layouts on close; exposing this as a user-facing feature with import/export would be a natural extension.
+- **Mission planning interface.** A visual waypoint editor for defining autonomous missions, with MAVLink mission upload to PX4 and ArduPilot. Currently, missions are authored externally (e.g., in QGroundControl) or via the AI assistant's natural language commands.
+- **Offline map support for GPS panel.** The GPS map panel currently requires an internet connection for tile loading. Bundling or caching map tiles for offline use would support field operations without connectivity.
+- **Plugin and extension authoring guide.** Substrate inherits Lapce's WASI plugin system. A guide covering plugin development, the RPC contract, and distribution would lower the barrier for community contributions.
+- **Log download from connected vehicles.** Automatic retrieval of ULog or other flight log files from MAVLink-connected vehicles over the existing telemetry link, removing the need for SD card access or separate transfer tools.
+- **Migration guide from VS Code + QGC workflow.** A step-by-step guide for teams transitioning from a VS Code editor plus QGroundControl ground station setup, mapping familiar workflows to their Substrate equivalents.

@@ -1,0 +1,72 @@
+---
+title: "Flight Modes & Commands"
+description: "PX4 flight modes supported by Substrate and the MAVLink commands used for drone control."
+---
+
+Substrate exposes PX4 drone control through 7 flight commands available via the AI assistant and the drone command palette. Each command is sent as a MAVLink `COMMAND_LONG` message to PX4 SITL.
+
+## Flight Commands
+
+| Command | MAV_CMD | ID | Parameters |
+|---------|---------|-----|------------|
+| Arm | `MAV_CMD_COMPONENT_ARM_DISARM` | 400 | arm=1 |
+| Disarm | `MAV_CMD_COMPONENT_ARM_DISARM` | 400 | arm=0 |
+| Takeoff | `MAV_CMD_NAV_TAKEOFF` | 22 | altitude_m (1--120m, default 5m) |
+| Land | `MAV_CMD_NAV_LAND` | 21 | (none) |
+| Return to Launch | `MAV_CMD_NAV_RETURN_TO_LAUNCH` | 20 | (none) |
+| Set Mode | `MAV_CMD_DO_SET_MODE` | 176 | mode string |
+| Go To | `MAV_CMD_DO_REPOSITION` | 192 | x, y, z (ENU meters relative to home) |
+
+Every command returns a response containing a `success` boolean, a `result` string (`ACCEPTED`, `DENIED`, etc.), and an error message if the command was rejected.
+
+## Supported PX4 Modes
+
+The `flight_set_mode` command accepts the following mode strings. Substrate maps each to PX4's internal base_mode + custom_main_mode + sub_mode system.
+
+| Mode String | Aliases | Description |
+|-------------|---------|-------------|
+| `MANUAL` | -- | Full manual control via RC transmitter |
+| `STABILIZED` | `STABILIZE` | Attitude stabilization, manual throttle |
+| `ALTCTL` | `ALTITUDE` | Altitude hold, manual position |
+| `POSCTL` | `POSITION` | Position hold with GPS |
+| `OFFBOARD` | -- | External control via MAVSDK/ROS 2 |
+| `HOLD` | `LOITER` | Hold current position and altitude |
+| `MISSION` | -- | Execute autonomous waypoint mission |
+| `RTL` | `RETURN` | Return to launch point and land |
+| `LAND` | -- | Land at current position |
+| `TAKEOFF` | -- | Automatic takeoff to set altitude |
+| `GUIDED` | -- | Maps to POSCTL (see note below) |
+
+<Note>
+  PX4 does not have a GUIDED mode like ArduPilot. When you set mode to `GUIDED`, Substrate maps it to `POSCTL` (position control). Use `OFFBOARD` mode for programmatic waypoint following via MAVSDK.
+</Note>
+
+## Using Flight Commands
+
+**Via AI Assistant** -- ask the assistant naturally:
+
+- "Arm the drone and take off to 10 meters"
+- "Switch to position hold mode"
+- "Go to coordinates 5, 3, 10"
+- "Land the drone"
+- "Return to launch"
+
+**Via Command Palette** -- the SITL panel includes quick-action buttons for Arm, Disarm, Takeoff, Land, and RTL. These are available when a simulation is running and the autopilot is connected.
+
+## Readiness States
+
+Before a drone can accept flight commands, it must progress through readiness states:
+
+1. **Launching** -- Container starting
+2. **BridgeConnected** -- gRPC bridge online
+3. **WorldLoaded** -- Gazebo world loaded
+4. **Rendering** -- 3D scene streaming
+5. **AutopilotConnected** -- MAVLink heartbeat received
+6. **ReadyToArm** -- EKF converged, GPS lock acquired
+7. **FullyOperational** -- Armed and ready for flight commands
+
+The AI assistant's `wait_for_simulation_ready` tool waits for a target state before proceeding. The default target is **ReadyToArm**.
+
+<Warning>
+  Arming sends a real MAVLink ARM command. When connected to physical hardware (not simulation), this will spin up motors. Always verify you are connected to a simulation before testing flight commands.
+</Warning>
