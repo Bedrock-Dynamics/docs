@@ -2,12 +2,16 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Bedrock Dynamics",
-  "appearance": "dark",
+  "appearance": {
+    "default": "dark"
+  },
   "colors": {
     "primary": "#c6ac89",
     "light": "#8a6d42",
-    "dark": "#c6ac89",
-    "background": {
+    "dark": "#c6ac89"
+  },
+  "background": {
+    "color": {
       "dark": "#1a1816"
     }
   },
