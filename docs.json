@@ -16,6 +16,10 @@
     }
   },
   "favicon": "/favicon.png",
+  "banner": {
+    "text": "Substrate is currently in closed beta.",
+    "url": "https://bedrockdynamics.studio"
+  },
   "navigation": {
     "tabs": [
       {
@@ -80,9 +84,9 @@
           "icon": "globe"
         },
         {
-          "anchor": "Download",
-          "href": "https://bedrockdynamics.studio/download",
-          "icon": "download"
+          "anchor": "Coming Soon",
+          "href": "https://bedrockdynamics.studio",
+          "icon": "clock"
         },
         {
           "anchor": "Docker Hub",
@@ -110,8 +114,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Download",
-      "href": "https://bedrockdynamics.studio/download"
+      "label": "Coming Soon",
+      "href": "https://bedrockdynamics.studio"
     }
   },
   "contextual": {
