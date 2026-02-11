@@ -88,6 +88,11 @@
           "anchor": "Docker Hub",
           "href": "https://hub.docker.com/u/bedrockdynamics",
           "icon": "docker"
+        },
+        {
+          "anchor": "Hugging Face",
+          "href": "https://huggingface.co/bedrockdynamics",
+          "icon": "face-smile"
         }
       ]
     }
@@ -119,8 +124,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/bedrock-dynamics",
-      "x": "https://x.com/bedrockdynamics"
+      "github": "https://github.com/bedrock-dynamics"
     }
   }
 }
