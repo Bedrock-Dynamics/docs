@@ -96,7 +96,7 @@
         {
           "anchor": "Hugging Face",
           "href": "https://huggingface.co/Bedrock-Dynamics",
-          "icon": "face-smile"
+          "icon": "https://huggingface.co/datasets/huggingface/brand-assets/resolve/main/hf-logo.svg"
         }
       ]
     }
