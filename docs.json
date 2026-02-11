@@ -17,7 +17,7 @@
   },
   "favicon": "/favicon.png",
   "banner": {
-    "text": "Substrate is currently in closed beta.",
+    "content": "Substrate is currently in closed beta.",
     "url": "https://bedrockdynamics.studio"
   },
   "navigation": {
