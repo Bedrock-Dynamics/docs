@@ -139,6 +139,68 @@ This page covers common issues you may encounter when using Substrate and how to
 
        Then connect to `ws://localhost:8765` in Substrate.
   </Accordion>
+
+  <Accordion title="No simulation stacks available">
+    If the simulation panel shows "No simulation stacks available":
+
+    1. **Check Docker is running.** Run `docker ps` in a terminal. If the command fails, start Docker Desktop (macOS/Windows) or the Docker daemon (Linux).
+
+    2. **Check network connectivity.** Substrate queries Docker Hub to discover available simulation stacks. Verify you can reach the registry:
+
+       ```bash
+       ping registry.hub.docker.com
+       ```
+
+    3. **Pull image manually.** If the registry is unreachable, you can pull a simulation image manually and Substrate will detect it:
+
+       ```bash
+       docker pull bedrockdynamics/substrate-sim:px4-gazebo-humble
+       ```
+
+    After pulling, restart Substrate or refresh the simulation panel to see the locally available stack.
+  </Accordion>
+
+  <Accordion title="Docker Hub rate limit errors">
+    **Symptom:** Warning message "Docker Hub rate limit exceeded. Retry after 60m"
+
+    **Cause:** Docker Hub limits anonymous users to 100 image pulls per 6 hours. If you exceed this limit, subsequent pull requests are blocked until the limit resets.
+
+    **Solutions:**
+
+    1. **Wait for the rate limit to reset.** The warning message shows when the limit will reset (typically 1-6 hours from when you hit the limit).
+
+    2. **Authenticate with Docker Hub.** Create a free Docker Hub account and log in:
+
+       ```bash
+       docker login
+       ```
+
+       Authenticated users have a higher rate limit (200 pulls per 6 hours for free accounts, unlimited for paid accounts).
+
+    3. **Use locally cached images.** If you have already pulled the image once, Substrate will continue to work using the local copy. The IDE automatically falls back to local images when the registry is unavailable.
+  </Accordion>
+
+  <Accordion title="Offline mode / showing local images only">
+    **Symptom:** Warning message "Showing local images only" or "Registry unavailable"
+
+    **Behavior:** When the Docker Hub registry is unreachable (due to network issues, rate limits, or being offline), Substrate automatically falls back to showing only simulation stacks that are already pulled locally.
+
+    **Note:** This is expected behavior and allows you to continue working offline. You can still launch any simulation stack that appears in the list. To see the full list of available stacks, restore network connectivity and restart Substrate.
+  </Accordion>
+
+  <Accordion title="Simulation stack shows generic name">
+    **Symptom:** A simulation stack displays a generic name (like "px4-gazebo-humble") instead of a formatted name (like "PX4 + Gazebo (Humble)")
+
+    **Cause:** The Docker image was built before OCI labels were added to the build process. Older images lack the metadata Substrate uses to format display names.
+
+    **Solution:** Pull the latest version of the image:
+
+    ```bash
+    docker pull bedrockdynamics/substrate-sim:px4-gazebo-humble
+    ```
+
+    After pulling the updated image, the formatted display name will appear in the simulation panel.
+  </Accordion>
 </AccordionGroup>
 
 ## Diagnostic Information
