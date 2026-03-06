@@ -11,6 +11,29 @@ Substrate uses [semantic versioning](https://semver.org/). The changelog is upda
 
 ## Latest Changes
 
+### AI Assistant
+
+- **Output styles**: Switch between concise, explanatory, and terse response modes with the `/style` command.
+- **Skills**: Reusable prompt workflows (`/plan-fix`, `/explain-code`, `/review-code`) that guide the assistant through structured processes.
+- **Snapshot and rollback**: Every file edit is auto-checkpointed. Each assistant message shows a Revert button for atomic multi-file undo.
+- **Task management**: Create, track, and complete structured task lists with DAG dependency tracking. Tasks auto-unblock when dependencies complete.
+- **MCP server integration**: Connect the assistant to external services (Linear, GitHub, or custom servers via `.substrate/mcp.json`) through the Model Context Protocol.
+- **Lifecycle hooks**: Attach shell commands, prompt injections, or notifications to 14 agent lifecycle events (PostEdit, PostBash, PreCommit, etc.) with glob-based file matching.
+- **Permission rules**: Hierarchical allow/deny/ask rules for tool access and file paths, with organization > workspace > user precedence.
+
+### Simulation
+
+- **Container flight tools**: Each PX4 + Gazebo simulation container now
+  exposes a native set of flight control tools. When a simulation starts, the AI
+  agent automatically gains `sim0__arm`, `sim0__disarm`, `sim0__takeoff`,
+  `sim0__land`, `sim0__go_to`, `sim0__set_flight_mode`, `sim0__return_to_launch`,
+  `sim0__run_script`, and `sim0__get_flight_state`. A mission workflow prompt is
+  injected at session start with correct sequencing and error-handling rules.
+  See [Simulation MCP Server](/substrate/reference/sim-mcp-server).
+- **Automatic port management**: The proxy allocates ports for container tool
+  connections automatically. No manual configuration needed, even when multiple
+  containers run simultaneously.
+
 ### Scene Authoring
 
 - **Entity inspector** with live data display, physics properties, joint configuration, sensor previews, and collision geometry overlays.
