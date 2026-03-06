@@ -1,9 +1,9 @@
 ---
 title: "AI Tool Reference"
-description: "Complete reference for all 44 tools available to the Substrate AI Assistant"
+description: "Complete reference for all 49 built-in tools available to the Substrate AI Assistant"
 ---
 
-The Substrate AI Assistant has access to **44 tools** organized into 9 categories. These tools let the agent read and edit code, launch and control simulations, capture and analyze visuals, and explore live data -- all from a natural language conversation.
+The Substrate AI Assistant has access to **49 built-in tools** organized into 10 categories. When a simulation is running, additional tools registered by the container's native MCP server are also available — see [Simulation MCP Server](/substrate/reference/sim-mcp-server). These tools let the agent read and edit code, launch and control simulations, capture and analyze visuals, and explore live data -- all from a natural language conversation.
 
 <Note>
   Tools marked with **Requires Approval** will show a diff or confirmation dialog before executing. The assistant cannot bypass this -- you always have the final say on file modifications.
@@ -11,7 +11,7 @@ The Substrate AI Assistant has access to **44 tools** organized into 9 categorie
 
 ## Code Editing & Exploration
 
-10 tools for navigating and modifying your workspace.
+11 tools for navigating and modifying your workspace.
 
 <AccordionGroup>
   <Accordion title="glob" icon="magnifying-glass">
@@ -139,6 +139,19 @@ The Substrate AI Assistant has access to **44 tools** organized into 9 categorie
     **Returns:** Ranked list of the most interconnected symbols (functions, types, traits).
 
     **Example prompt:** *"Show me the most important symbols in the simulation module."*
+  </Accordion>
+
+  <Accordion title="open_file" icon="arrow-up-right-from-square">
+    Open a file in the IDE editor panel.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `file_path` | string | Yes | Absolute path to the file |
+    | `line` | int | No | Line number to scroll to |
+
+    **Returns:** Confirmation that the file was opened.
+
+    **Example prompt:** *"Open the dispatch.rs file at line 500."*
   </Accordion>
 
   <Accordion title="task" icon="code-branch">
@@ -609,6 +622,66 @@ The Substrate AI Assistant has access to **44 tools** organized into 9 categorie
     **Returns:** Entity names with active pose streams.
 
     **Example prompt:** *"Which entities can I follow with the camera?"*
+  </Accordion>
+</AccordionGroup>
+
+## Task Management
+
+4 tools for structured task tracking with dependency support.
+
+<AccordionGroup>
+  <Accordion title="task_create" icon="circle-plus">
+    Create a new task in the session's task list.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `title` | string | Yes | Short task description |
+    | `description` | string | No | Detailed requirements |
+    | `blocked_by` | list | No | IDs of tasks that must complete first |
+
+    **Returns:** Created task with ID and status.
+
+    **Example prompt:** *"Create a task to implement the GPS fence, blocked by the config parser task."*
+  </Accordion>
+
+  <Accordion title="task_update" icon="pen">
+    Update a task's status, title, or dependencies.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `task_id` | int | Yes | Task to update |
+    | `status` | string | No | `pending`, `in_progress`, `completed`, or `cancelled` |
+    | `title` | string | No | New title |
+    | `description` | string | No | New description |
+    | `result` | string | No | Completion result or notes |
+
+    Completing a task automatically unblocks any tasks that were waiting on it.
+
+    **Returns:** Updated task.
+
+    **Example prompt:** *"Mark task 3 as completed."*
+  </Accordion>
+
+  <Accordion title="task_list" icon="list-check">
+    List all tasks in the current session.
+
+    No parameters.
+
+    **Returns:** All tasks with IDs, titles, statuses, and dependency info.
+
+    **Example prompt:** *"Show me all tasks and their status."*
+  </Accordion>
+
+  <Accordion title="task_get" icon="circle-info">
+    Get full details for a specific task.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | `task_id` | int | Yes | Task to retrieve |
+
+    **Returns:** Full task details including description, dependencies, and result.
+
+    **Example prompt:** *"Show me the details of task 2."*
   </Accordion>
 </AccordionGroup>
 
