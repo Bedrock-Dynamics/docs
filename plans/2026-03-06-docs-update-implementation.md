@@ -223,7 +223,7 @@ git commit -m "docs(ai-tools): fix tool counts (49 built-in, 11 code editing); l
 ```mdx
 ---
 title: "Simulation MCP Server"
-description: "Native MCP server running inside each simulation container, exposing MAVSDK-backed flight tools to the AI assistant."
+description: "Native MCP server running inside each simulation container, exposing flight control tools to the AI assistant."
 ---
 
 Each PX4 + Gazebo simulation container starts a built-in MCP server alongside
@@ -232,20 +232,13 @@ simulation startup and registers its tools with the active AI agent session.
 
 ## How It Works
 
-When the proxy connects to a running container, it:
+When a simulation starts, the proxy:
 
-1. Establishes a TCP connection to the container's MCP server (port 8090 by default)
-2. Discovers the available tools via the MCP protocol
-3. Registers them with the agent under a namespaced prefix: `sim0__` for the first container, `sim1__` for the second, and so on
-4. Fetches the `substrate:workflow` prompt and injects it as a system block into the agent session
+1. Discovers the container's available tools via the MCP protocol
+2. Registers them with the agent under a namespaced prefix: `sim0__` for the first container, `sim1__` for the second, and so on
+3. Injects a mission workflow prompt as a system block into the agent session
 
-The agent then sees the container tools alongside its 49 built-in tools. There is no user configuration required.
-
-<Note>
-  The MCP port is allocated automatically. If the default port (8090) is in use,
-  the proxy finds the next available port. This allows multiple simulation
-  containers to run simultaneously without port conflicts.
-</Note>
+The agent then sees the container tools alongside its 49 built-in tools. There is no user configuration required. Ports are allocated automatically — multiple containers can run simultaneously without conflicts.
 
 ## Tool Reference
 
@@ -253,7 +246,7 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
 
 <AccordionGroup>
   <Accordion title="arm" icon="power-off">
-    Arm the drone motors using MAVSDK. The vehicle must be in `ReadyToArm` state.
+    Arm the drone motors. The vehicle must be in `ReadyToArm` state.
     Call `get_flight_state` first to verify.
 
     No parameters.
@@ -274,7 +267,7 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
   </Accordion>
 
   <Accordion title="takeoff" icon="plane-departure">
-    Take off to a target altitude using the MAVSDK action API.
+    Take off to a target altitude.
 
     | Parameter | Type | Default | Description |
     |-----------|------|---------|-------------|
@@ -296,8 +289,8 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
   </Accordion>
 
   <Accordion title="go_to" icon="location-dot">
-    Navigate to a position using MAVSDK Offboard mode. Coordinates are in
-    **NED metres relative to the home position** (x = North, y = East, z = Up).
+    Navigate to a position in **NED metres relative to the home position**
+    (x = North, y = East, z = Up).
 
     | Parameter | Type | Default | Description |
     |-----------|------|---------|-------------|
@@ -313,22 +306,22 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
     **Returns:** `{"ok": true, "action": "go_to", "x": 10, "y": 0, "z": 5, "yaw_deg": 0}`
 
     <Warning>
-      `go_to` uses NED metres relative to home, not global coordinates. North is
-      positive x, East is positive y, Up is positive z. This differs from the
-      built-in `flight_goto` tool, which uses ENU metres.
+      `go_to` uses **NED metres** relative to home. This differs from the
+      built-in `flight_goto` tool, which uses ENU metres. North is positive x,
+      East is positive y, Up is positive z.
     </Warning>
 
     **Example prompt:** *"Fly 20 metres north at 10 metres altitude."*
   </Accordion>
 
   <Accordion title="set_flight_mode" icon="sliders">
-    Set the vehicle flight mode via MAVSDK.
+    Set the vehicle flight mode.
 
     | Parameter | Type | Description |
     |-----------|------|-------------|
     | `mode` | string | `HOLD`, `RTL`, `LAND`, or `TAKEOFF` (case-insensitive) |
 
-    For OFFBOARD position control, use `go_to` instead.
+    For position setpoint control, use `go_to` instead.
 
     **Returns:** `{"ok": true, "action": "set_flight_mode", "mode": "HOLD"}`
 
@@ -346,8 +339,8 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
   </Accordion>
 
   <Accordion title="run_script" icon="terminal">
-    Execute a Python script that already exists inside the container filesystem
-    and return its output. For complex manoeuvres that exceed MCP tool granularity.
+    Execute a Python script inside the container and return its output.
+    Use for multi-step manoeuvres that go beyond single tool calls.
 
     | Parameter | Type | Default | Description |
     |-----------|------|---------|-------------|
@@ -356,18 +349,13 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
 
     **Returns:** `{"ok": true, "exit_code": 0, "stdout": "...", "stderr": ""}`
 
-    <Tip>
-      Combine with the built-in `write_file` + `sim_exec` tools: write a script
-      to a temp path with `write_file`, copy it into the container with
-      `sim_exec cp`, then run it with `run_script`.
-    </Tip>
-
-    **Example prompt:** *"Run the MAVSDK waypoint script at /tmp/mission.py."*
+    **Example prompt:** *"Run the waypoint mission script at /tmp/mission.py."*
   </Accordion>
 
   <Accordion title="get_flight_state" icon="gauge">
-    Read-only snapshot of the current flight state via MAVSDK telemetry.
-    No side effects. Use before arming to verify the vehicle is ready.
+    Read-only snapshot of the current flight state: arm status, flight mode,
+    altitude, position, and battery. No side effects. Use before arming to
+    verify the vehicle is ready.
 
     No parameters.
 
@@ -375,7 +363,7 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
     ```json
     {
       "armed": false,
-      "flight_mode": "FlightMode.HOLD",
+      "flight_mode": "HOLD",
       "altitude_m": 0.0,
       "latitude_deg": 47.3977419,
       "longitude_deg": 8.5455938,
@@ -387,65 +375,37 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
   </Accordion>
 </AccordionGroup>
 
-## Workflow Prompt
+## Mission Workflow Prompt
 
-At connection, the proxy fetches the `substrate:workflow` prompt from the
-container and injects it as a system block into the agent session. This prompt
-defines the standard mission sequence and behavioural rules the agent must
-follow. You do not need to repeat these rules in your prompts — the agent
-already knows them.
+When the proxy connects, it fetches a mission workflow prompt from the container
+and injects it as a system block into the agent session. The prompt encodes the
+correct sequencing for PX4 missions (readiness checks before arming, how to
+detect waypoint arrival, error handling rules) so you do not need to repeat
+these instructions in your own prompts.
 
-**Standard mission sequence:**
+## Coordinate Frames
 
-```
-1. list_simulations → start_simulation if not running
-2. wait_for_simulation_ready(target_state="ReadyToArm")
-3. sim0__arm → sim0__takeoff(altitude_m=5)
-4. sim0__go_to(x, y, z) or sim_exec_background(script)
-   → wait_for_any([task_id]) to detect arrival
-5. sim0__land → sim0__disarm
-```
-
-**Behavioural rules injected into the session:**
-
-- Never call `sleep()` — use `wait_for_any(timeout_ms=N)` loops instead
-- After each `wait_for_any` timeout: call `sim0__get_flight_state`, then
-  `capture_screenshot` if something looks wrong, then continue
-- After 3 consecutive tool failures: stop and report to the user
-- `sim0__go_to` uses NED metres relative to home (x = North, y = East, z = Up)
-- Always check `sim0__get_flight_state` before arm; verify altitude after takeoff
-
-## Relationship to Built-in Flight Tools
-
-The container MCP tools and the built-in `flight_*` tools both control the same
-vehicle. They differ in implementation:
-
-| | Container MCP tools (`sim0__*`) | Built-in tools (`flight_*`) |
-|--|--|--|
-| **Implementation** | MAVSDK Python (inside container) | MAVLink UDP (proxy, on host) |
-| **Coordinate frame** | NED metres relative to home | ENU metres |
-| **Blocking** | Returns immediately after sending setpoint | Same |
-| **Telemetry** | `sim0__get_flight_state` reads MAVSDK streams | `get_telemetry` reads proxy snapshot |
-
-Either set works. The container tools are the recommended path for new missions
-because they use the MAVSDK API directly and include the workflow prompt
-guardrails.
+The `sim0__go_to` tool uses **NED metres relative to home**. The built-in
+`flight_goto` tool uses **ENU metres**. Both tools control the same vehicle —
+choose whichever coordinate convention is convenient for your mission. See
+[Coordinate Frames](/substrate/reference/coordinate-frames) for a full
+explanation of the NED/ENU distinction.
 ```
 
 **Step 2: Verify the file was written correctly**
 
 Read `substrate/reference/sim-mcp-server.mdx`. Confirm:
-- Frontmatter has `title` and `description`
+- Frontmatter has `title` and `description` (no mention of MAVSDK)
 - All 9 tools are documented in `<Accordion>` blocks
 - The `go_to` warning about NED vs. ENU is present
-- The workflow prompt section includes the mission sequence and rules
-- The comparison table at the bottom is present
+- The Mission Workflow Prompt section exists but does NOT reproduce the prompt text
+- No port numbers, no "FastMCP", no "MAVSDK" in the content
 
 **Step 3: Commit**
 
 ```bash
 git add substrate/reference/sim-mcp-server.mdx
-git commit -m "docs: add sim-mcp-server reference page (FastMCP, MAVSDK tools, workflow prompt)"
+git commit -m "docs: add sim-mcp-server reference page (container flight tools, workflow prompt)"
 ```
 
 ---
@@ -467,16 +427,16 @@ Insert after the `### AI Assistant` block and before `### Scene Authoring`:
 ```mdx
 ### Simulation
 
-- **Container MCP server**: Each PX4 + Gazebo simulation container now runs a
-  native FastMCP server with MAVSDK-backed tools. When a simulation starts, the
-  AI agent automatically gains `sim0__arm`, `sim0__disarm`, `sim0__takeoff`,
+- **Container flight tools**: Each PX4 + Gazebo simulation container now
+  exposes a native set of flight control tools. When a simulation starts, the AI
+  agent automatically gains `sim0__arm`, `sim0__disarm`, `sim0__takeoff`,
   `sim0__land`, `sim0__go_to`, `sim0__set_flight_mode`, `sim0__return_to_launch`,
-  `sim0__run_script`, and `sim0__get_flight_state`. A `substrate:workflow` prompt
-  with mission sequencing rules and anti-patterns is injected at session start.
+  `sim0__run_script`, and `sim0__get_flight_state`. A mission workflow prompt is
+  injected at session start with correct sequencing and error-handling rules.
   See [Simulation MCP Server](/substrate/reference/sim-mcp-server).
-- **MCP port auto-discovery**: The proxy now finds a free TCP port for the
-  container MCP server automatically. No manual configuration needed, even when
-  multiple containers run simultaneously.
+- **Automatic port management**: The proxy allocates ports for container tool
+  connections automatically. No manual configuration needed, even when multiple
+  containers run simultaneously.
 ```
 
 **Step 3: Update the Scene Authoring subsection**
