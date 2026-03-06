@@ -100,14 +100,14 @@
         {
           "anchor": "Hugging Face",
           "href": "https://huggingface.co/Bedrock-Dynamics",
-          "icon": "/logo/hf-logo.svg"
+          "icon": "/logo/hf.png"
         }
       ]
     }
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/logo.png",
+    "dark": "/logo/logo.png"
   },
   "navbar": {
     "links": [
