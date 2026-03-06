@@ -66,8 +66,8 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
   </Accordion>
 
   <Accordion title="go_to" icon="location-dot">
-    Navigate to a position in **NED meters relative to the home position**
-    (x = North, y = East, z = Up).
+    Navigate to a position relative to the home position.
+    Offsets are in meters: x = North, y = East, z = altitude above ground (positive up).
 
     | Parameter | Type | Default | Description |
     |-----------|------|---------|-------------|
@@ -83,9 +83,9 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
     **Returns:** `{"ok": true, "action": "go_to", "x": 10, "y": 0, "z": 5, "yaw_deg": 0}`
 
     <Warning>
-      `go_to` uses **NED meters** relative to home. This differs from the
-      built-in `flight_goto` tool, which uses ENU meters. North is positive x,
-      East is positive y, Up is positive z.
+      `go_to` takes North and East offsets in meters, plus altitude above ground
+      (positive up). The built-in `flight_goto` tool uses ENU meters instead —
+      choose whichever convention fits your mission.
     </Warning>
 
     **Example prompt:** *"Fly 20 meters north at 10 meters altitude."*
@@ -94,9 +94,9 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
   <Accordion title="set_flight_mode" icon="sliders">
     Set the vehicle flight mode.
 
-    | Parameter | Type | Description |
-    |-----------|------|-------------|
-    | `mode` | string | `HOLD`, `RTL`, `LAND`, or `TAKEOFF` (case-insensitive) |
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `mode` | string | — | `HOLD`, `RTL`, `LAND`, or `TAKEOFF` (case-insensitive) |
 
     For position setpoint control, use `go_to` instead.
 
@@ -154,11 +154,10 @@ The agent then sees the container tools alongside its 49 built-in tools. There i
 
 ## Mission Workflow Prompt
 
-When the proxy connects, it fetches a mission workflow prompt from the container
-and injects it as a system block into the agent session. The prompt encodes the
-correct sequencing for PX4 missions (readiness checks before arming, how to
-detect waypoint arrival, error handling rules) so you do not need to repeat
-these instructions in your own prompts.
+The prompt encodes correct PX4 mission sequencing — readiness checks, waypoint
+arrival detection, and error handling — so your own prompts require no
+additional instructions. The proxy fetches this prompt from the container at
+connection time and injects it as a system block into the agent session.
 
 ## Coordinate Frames
 
