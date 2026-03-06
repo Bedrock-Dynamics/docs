@@ -34,8 +34,13 @@ When an entity is selected, a translate gizmo appears at its origin. Drag the ax
     - GPU-pickable: axis detection uses the rendering pipeline, not CPU raycasting
     - Updates are throttled to 30 Hz to avoid flooding the simulation bridge
   </Accordion>
-  <Accordion title="Planned Gizmo Modes">
-    Rotate and scale gizmo modes are planned for a future release. The mode selection infrastructure exists but currently only translate is active.
+  <Accordion title="Gizmo Modes">
+    Two modes are available. Switch with the toolbar buttons or keyboard shortcuts:
+
+    - **Translate** (T) — drag the axis arrows to move along X (red), Y (green), or Z (blue)
+    - **Rotate** (R) — drag the torus rings to rotate around each axis
+
+    Scale mode is planned for a future release.
   </Accordion>
 </AccordionGroup>
 
@@ -53,7 +58,7 @@ Spawn new models into the running simulation from the Model Browser panel.
 </Tabs>
 
 <Info>
-  Models are spawned at the world origin. After spawning, select the new entity and use the transform gizmo or pose editor to position it.
+  Local Fuel cache models spawn at the camera's current focus point. Remote search results spawn at the world origin. After spawning, select the new entity and use the transform gizmo or pose editor to position it precisely.
 </Info>
 
 ## Context Menu
