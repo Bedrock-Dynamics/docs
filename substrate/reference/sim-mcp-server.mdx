@@ -161,7 +161,8 @@ connection time and injects it as a system block into the agent session.
 
 ## Coordinate Frames
 
-The `sim0__go_to` tool uses **NED meters relative to home**. The built-in
+The `sim0__go_to` tool uses North and East offsets in meters relative to home,
+with altitude above ground as a positive-up z value. The built-in
 `flight_goto` tool uses **ENU meters**. Both tools control the same vehicle —
 choose whichever coordinate convention is convenient for your mission. See
 [Coordinate Frames](/substrate/reference/coordinate-frames) for a full
