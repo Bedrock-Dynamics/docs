@@ -1,0 +1,169 @@
+---
+title: "Simulation MCP Server"
+description: "Native MCP server running inside each simulation container, exposing flight control tools to the AI assistant."
+---
+
+Each PX4 + Gazebo simulation container starts a built-in MCP server alongside
+the autopilot and bridge. The IDE proxy connects to it automatically at
+simulation startup and registers its tools with the active AI agent session.
+
+## How It Works
+
+When a simulation starts, the proxy:
+
+1. Discovers the container's available tools via the MCP protocol
+2. Registers them with the agent under a namespaced prefix: `sim0__` for the first container, `sim1__` for the second, and so on
+3. Injects a mission workflow prompt as a system block into the agent session
+
+The agent then sees the container tools alongside its 49 built-in tools. There is no user configuration required. Ports are allocated automatically — multiple containers can run simultaneously without conflicts.
+
+## Tool Reference
+
+9 tools are exposed by the `px4-gazebo-humble` container image.
+
+<AccordionGroup>
+  <Accordion title="arm" icon="power-off">
+    Arm the drone motors. The vehicle must be in `ReadyToArm` state.
+    Call `get_flight_state` first to verify.
+
+    No parameters.
+
+    **Returns:** `{"ok": true, "action": "arm"}`
+
+    **Example prompt:** *"Arm the drone."*
+  </Accordion>
+
+  <Accordion title="disarm" icon="circle-stop">
+    Disarm the drone motors. Only safe when the vehicle is landed.
+
+    No parameters.
+
+    **Returns:** `{"ok": true, "action": "disarm"}`
+
+    **Example prompt:** *"Disarm after landing."*
+  </Accordion>
+
+  <Accordion title="takeoff" icon="plane-departure">
+    Take off to a target altitude.
+
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `altitude_m` | float | 5.0 | Target altitude in meters AGL (clamped to 1–120) |
+
+    **Returns:** `{"ok": true, "action": "takeoff", "altitude_m": 5.0}`
+
+    **Example prompt:** *"Take off to 10 meters."*
+  </Accordion>
+
+  <Accordion title="land" icon="plane-arrival">
+    Land at the current horizontal position.
+
+    No parameters.
+
+    **Returns:** `{"ok": true, "action": "land"}`
+
+    **Example prompt:** *"Land the drone."*
+  </Accordion>
+
+  <Accordion title="go_to" icon="location-dot">
+    Navigate to a position in **NED meters relative to the home position**
+    (x = North, y = East, z = Up).
+
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `x` | float | — | North offset from home (meters) |
+    | `y` | float | — | East offset from home (meters) |
+    | `z` | float | — | Altitude AGL (meters, positive up) |
+    | `yaw_deg` | float | 0.0 | Heading in degrees (0 = North, 90 = East) |
+
+    The vehicle must be airborne. The tool returns immediately after sending the
+    setpoint — use `wait_for_any` with a `sim_exec_background` altitude-check
+    script to detect arrival.
+
+    **Returns:** `{"ok": true, "action": "go_to", "x": 10, "y": 0, "z": 5, "yaw_deg": 0}`
+
+    <Warning>
+      `go_to` uses **NED meters** relative to home. This differs from the
+      built-in `flight_goto` tool, which uses ENU meters. North is positive x,
+      East is positive y, Up is positive z.
+    </Warning>
+
+    **Example prompt:** *"Fly 20 meters north at 10 meters altitude."*
+  </Accordion>
+
+  <Accordion title="set_flight_mode" icon="sliders">
+    Set the vehicle flight mode.
+
+    | Parameter | Type | Description |
+    |-----------|------|-------------|
+    | `mode` | string | `HOLD`, `RTL`, `LAND`, or `TAKEOFF` (case-insensitive) |
+
+    For position setpoint control, use `go_to` instead.
+
+    **Returns:** `{"ok": true, "action": "set_flight_mode", "mode": "HOLD"}`
+
+    **Example prompt:** *"Switch to hold mode."*
+  </Accordion>
+
+  <Accordion title="return_to_launch" icon="house">
+    Return to the home position and land (RTL).
+
+    No parameters.
+
+    **Returns:** `{"ok": true, "action": "return_to_launch"}`
+
+    **Example prompt:** *"Return to home."*
+  </Accordion>
+
+  <Accordion title="run_script" icon="terminal">
+    Execute a Python script inside the container and return its output.
+    Use for multi-step maneuvers that go beyond single tool calls.
+
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `path` | string | — | Absolute path to the script inside the container |
+    | `timeout_s` | float | 30.0 | Maximum execution time in seconds |
+
+    **Returns:** `{"ok": true, "exit_code": 0, "stdout": "...", "stderr": ""}`
+
+    **Example prompt:** *"Run the waypoint mission script at /tmp/mission.py."*
+  </Accordion>
+
+  <Accordion title="get_flight_state" icon="gauge">
+    Read-only snapshot of the current flight state: arm status, flight mode,
+    altitude, position, and battery. No side effects. Use before arming to
+    verify the vehicle is ready.
+
+    No parameters.
+
+    **Returns:**
+    ```json
+    {
+      "armed": false,
+      "flight_mode": "HOLD",
+      "altitude_m": 0.0,
+      "latitude_deg": 47.3977419,
+      "longitude_deg": 8.5455938,
+      "battery_pct": 100.0
+    }
+    ```
+
+    **Example prompt:** *"What is the drone's current altitude and battery level?"*
+  </Accordion>
+</AccordionGroup>
+
+## Mission Workflow Prompt
+
+When the proxy connects, it fetches a mission workflow prompt from the container
+and injects it as a system block into the agent session. The prompt encodes the
+correct sequencing for PX4 missions (readiness checks before arming, how to
+detect waypoint arrival, error handling rules) so you do not need to repeat
+these instructions in your own prompts.
+
+## Coordinate Frames
+
+The `sim0__go_to` tool uses **NED meters relative to home**. The built-in
+`flight_goto` tool uses **ENU meters**. Both tools control the same vehicle —
+choose whichever coordinate convention is convenient for your mission. See
+[Coordinate Frames](/substrate/reference/coordinate-frames) for a full
+explanation of the NED/ENU distinction.
