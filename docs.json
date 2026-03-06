@@ -57,6 +57,7 @@
             "group": "Reference",
             "pages": [
               "substrate/reference/ai-tools",
+              "substrate/reference/sim-mcp-server",
               "substrate/reference/flight-modes",
               "substrate/reference/coordinate-frames",
               "substrate/reference/docker-image",
