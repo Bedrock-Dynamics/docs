@@ -82,32 +82,29 @@
         {
           "anchor": "Website",
           "href": "https://bedrockdynamics.studio",
-          "icon": "globe",
-          "iconType": "solid"
+          "icon": "globe"
         },
         {
           "anchor": "Coming Soon",
           "href": "https://bedrockdynamics.studio",
-          "icon": "clock",
-          "iconType": "solid"
+          "icon": "clock"
         },
         {
           "anchor": "Docker Hub",
           "href": "https://hub.docker.com/u/bedrockdynamics",
-          "icon": "docker",
-          "iconType": "brands"
+          "icon": "box"
         },
         {
           "anchor": "Hugging Face",
           "href": "https://huggingface.co/Bedrock-Dynamics",
-          "icon": "/logo/hf.png"
+          "icon": "https://unpkg.com/@lobehub/icons-static-png@latest/light/huggingface.png"
         }
       ]
     }
   },
   "logo": {
-    "light": "/logo/logo.png",
-    "dark": "/logo/logo.png"
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
   },
   "navbar": {
     "links": [
