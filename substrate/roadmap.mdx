@@ -9,7 +9,8 @@ This page documents features that are planned, in progress, or under considerati
 
 These items have partial implementations in the codebase today.
 
-- **Scale gizmo mode.** The `GizmoMode` enum currently defines `Translate` and `Rotate` variants. Scale is the next planned mode, requiring box-handle rendering and per-axis scale drag math. The infrastructure for mode switching already exists.
+- **MCP server ecosystem.** Linear and GitHub MCP servers are functional with OAuth and API key authentication. Planned: additional built-in servers (Slack, Jira) and a workspace UI for server management.
+- **Scale gizmo mode.** The `GizmoMode` enum defines `Translate` and `Rotate` variants, both implemented and active. Scale is the next planned mode, requiring box-handle rendering and per-axis scale drag math. The mode-switching infrastructure already exists.
 - **Entity inspector expansion.** The inspector currently shows pose data and basic property overviews. Full editing of physics properties (mass, friction, inertia tensors), sensor configuration parameters, and joint limits is partially scaffolded but not yet wired to the bridge protocol.
 - **Remote model thumbnails.** The Model Browser displays thumbnails for locally cached Gazebo Fuel models. Remote search results do not yet render preview images. Camera-focus spawning works for local models; remote models still spawn at the world origin.
 
@@ -17,7 +18,9 @@ These items have partial implementations in the codebase today.
 
 These items are confirmed in the codebase or documentation as upcoming work.
 
-- **MuJoCo physics integration.** Listed as "Planned" in the [Supported Platforms](/substrate/reference/supported-platforms) compatibility matrix. Will add MuJoCo as an alternative physics backend alongside Gazebo.
+- **Terminal context for AI assistant.** Allow the assistant to read output from IDE terminal panels. This enables workflows where the user runs a build or test in a terminal and asks the assistant to diagnose failures from the output.
+- **Automated test hooks.** Enhanced lifecycle hooks that parse test output from cargo, pytest, and npm, automatically reporting pass/fail status back to the assistant after file edits.
+- **Custom skills.** User-authored skill files in `.substrate/skills/` to define workspace-specific prompt workflows beyond the built-in set.
 - **ArduPilot SITL simulation stack.** The `ardupilot-gazebo-humble` tag is registered in the simulation stack list and the ArduPilot bridge module (`ardupilot_bridge.rs`) is implemented, but the Docker image is not yet published. Once available, it will support Copter, Rover, and Plane SITL variants.
 - **MoveIt + Gazebo manipulation stack.** The `moveit-gazebo-humble` tag is registered in the simulation stack list for robotic arm and manipulation workflows. The Docker image is not yet built.
 
