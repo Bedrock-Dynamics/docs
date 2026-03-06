@@ -24,11 +24,11 @@ Substrate uses [semantic versioning](https://semver.org/). The changelog is upda
 ### Simulation
 
 - **Container flight tools**: Each PX4 + Gazebo simulation container now
-  exposes a native set of flight control tools. When a simulation starts, the AI
-  agent automatically gains `sim0__arm`, `sim0__disarm`, `sim0__takeoff`,
-  `sim0__land`, `sim0__go_to`, `sim0__set_flight_mode`, `sim0__return_to_launch`,
-  `sim0__run_script`, and `sim0__get_flight_state`. A mission workflow prompt is
-  injected at session start with correct sequencing and error-handling rules.
+  exposes a native set of flight control tools — arm, disarm, takeoff, land,
+  go-to, set flight mode, return to launch, run script, and get flight state —
+  available under `sim0__` prefixed names scoped to the container. Substrate
+  injects a mission workflow prompt at session start with validated sequencing
+  and error-handling rules.
   See [Simulation MCP Server](/substrate/reference/sim-mcp-server).
 - **Automatic port management**: The proxy allocates ports for container tool
   connections automatically. No manual configuration needed, even when multiple
