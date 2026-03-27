@@ -63,6 +63,209 @@ You can also paste or drag images directly into the chat input. The assistant wi
   </Card>
 </CardGroup>
 
+## Output Styles
+
+Control how verbose the assistant is with the `/style` command.
+
+```
+/style concise
+/style explanatory
+/style terse
+```
+
+<CardGroup cols={3}>
+  <Card title="Concise" icon="compress">
+    Code-first, bullet points, max 3 sentences per explanation. Best when you know what you want.
+  </Card>
+  <Card title="Explanatory" icon="book-open">
+    Discusses design tradeoffs, references industry patterns, and wraps key points in insight blocks. Default style.
+  </Card>
+  <Card title="Terse" icon="minimize">
+    No prose. One-line confirmations: "Done.", "Fixed.", "Created X." Only speaks when asked a question.
+  </Card>
+</CardGroup>
+
+## Skills
+
+Skills are reusable prompt workflows invoked with a slash command. They inject structured instructions so the assistant follows a specific process instead of improvising.
+
+```
+/plan-fix
+/explain-code
+/review-code
+```
+
+| Skill | What It Does |
+|-------|-------------|
+| `/plan-fix` | Structured debugging: reproduce, isolate, fix, verify |
+| `/explain-code` | Walk through purpose, patterns, edge cases, and dependencies |
+| `/review-code` | Correctness, security, performance, and style checklist |
+
+<Tip>
+  Type `/skill` in the chat to list all available skills with descriptions.
+</Tip>
+
+## Snapshot and Rollback
+
+Every file the assistant edits is automatically checkpointed. Each assistant message that modifies files shows a **Revert** button that restores all affected files to their exact state before that message -- including handling newly created and deleted files.
+
+Snapshots are stored locally in your workspace using zstd compression. No configuration needed.
+
+<Note>
+  Revert operates on the file system directly and does not create git commits. It restores byte-for-byte content regardless of git state.
+</Note>
+
+## MCP Servers
+
+The assistant can connect to external services through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). MCP servers expose tools the assistant can call alongside its built-in capabilities.
+
+### Built-in servers
+
+Two servers are available out of the box. They activate automatically when credentials are configured in workspace settings:
+
+| Server | Endpoint | Authentication |
+|--------|----------|---------------|
+| Linear | `mcp.linear.app/mcp` | OAuth (connect via settings) or `LINEAR_API_KEY` |
+| GitHub | `api.githubcopilot.com/mcp/` | `GITHUB_PERSONAL_ACCESS_TOKEN` |
+
+### Adding custom servers
+
+Create `.substrate/mcp.json` at your workspace root:
+
+```json
+{
+  "servers": {
+    "my-server": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@my-org/mcp-server"],
+      "env": {
+        "API_KEY": "env:MY_SECRET_NAME"
+      },
+      "description": "My custom tool server"
+    }
+  }
+}
+```
+
+<AccordionGroup>
+  <Accordion title="stdio transport" icon="terminal">
+    Launches a local process. Set `command` and optionally `args` and `env`.
+
+    ```json
+    {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": { "ROOT": "/path/to/dir" }
+    }
+    ```
+  </Accordion>
+  <Accordion title="http transport" icon="globe">
+    Connects to a remote HTTP endpoint.
+
+    ```json
+    {
+      "transport": "http",
+      "url": "https://my-mcp-server.example.com/mcp"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+Environment values prefixed with `env:` are resolved from workspace secrets -- for example, `"env:MY_API_KEY"` reads the secret named `MY_API_KEY` rather than using the literal string.
+
+## Lifecycle Hooks
+
+Hooks attach custom actions to agent lifecycle events. When a matching event fires, the hook runs its handler.
+
+### Events
+
+<Tabs>
+  <Tab title="Session">
+    `SessionStart` · `SessionEnd`
+  </Tab>
+  <Tab title="Tool Use">
+    `PreToolUse` · `PostToolUse`
+  </Tab>
+  <Tab title="File Operations">
+    `PreEdit` · `PostEdit` · `PreWrite` · `PostWrite`
+  </Tab>
+  <Tab title="Shell & Git">
+    `PreBash` · `PostBash` · `PreCommit` · `PostCommit` · `PrePush` · `PostPush`
+  </Tab>
+</Tabs>
+
+### Handler types
+
+| Type | What it does | Config |
+|------|-------------|--------|
+| `command` | Runs a shell command and captures output | `{"command": "cargo check"}` |
+| `prompt` | Injects text into the agent's context | `{"prompt": "Always run tests after edits"}` |
+| `notify` | Sends a notification to the user | `{"message": "Edit detected"}` |
+
+### Matchers
+
+Hooks can optionally filter by tool name and file path:
+
+```json
+{
+  "event": "PostEdit",
+  "handler_type": "command",
+  "handler_config": { "command": "cargo test" },
+  "matcher": {
+    "tool": "Edit",
+    "glob": "**/*.rs"
+  },
+  "priority": 10,
+  "timeout_seconds": 30
+}
+```
+
+Higher `priority` values fire first. Hooks are managed through workspace settings.
+
+<Tip>
+  Example: A `PostEdit` hook with `glob: "**/*.rs"` that runs `cargo test` after every Rust file edit, so the assistant sees test failures immediately.
+</Tip>
+
+## Permission Rules
+
+Workspace administrators can define rules that control which tools the assistant can use and which paths it can access.
+
+### Rule types
+
+| Type | Effect |
+|------|--------|
+| **Allow** | Permit the action |
+| **Deny** | Block the action (always wins, regardless of scope) |
+| **Ask** | Show a confirmation dialog before proceeding |
+
+### Scope hierarchy
+
+Rules are evaluated with scope-based precedence. Organization rules outrank workspace rules, which outrank user rules:
+
+| Scope | Priority Weight |
+|-------|----------------|
+| Organization | +100 |
+| Workspace | +50 |
+| User | +10 |
+
+### Path patterns
+
+The `pattern` field supports glob matching with recursive `**`:
+
+```
+**/*.rs          # all Rust files
+src/secrets/**   # everything under src/secrets/
+*.env            # environment files at any level
+```
+
+<Warning>
+  Deny rules always win. If any matching deny rule exists, the action is blocked regardless of allow rules at a higher scope.
+</Warning>
+
+Permission rules are managed through workspace settings.
+
 ## Context Awareness
 
 The assistant automatically detects the running simulation, robot type, controller state, and system health. You do not need to explain your setup -- ask questions directly.

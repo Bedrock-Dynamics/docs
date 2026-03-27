@@ -1,0 +1,199 @@
+---
+title: "Architecture"
+description: "How Bedrock Dynamics connects IDE, cloud orchestration, and edge robots into one platform."
+---
+
+Bedrock Dynamics is a physical AI platform. An AI agent understands your robot, writes control code, verifies it in simulation, and deploys it to hardware — all within automated safety bounds.
+
+The platform has three products that share one backend:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                      BEDROCK DYNAMICS                            │
+├────────────────┬──────────────────┬──────────────────────────────┤
+│  Studio (Web)  │  Substrate (IDE) │  roz (CLI + Cloud + Edge)   │
+│  Auth + Dash   │  Sim + Hardware  │  Agent orchestration        │
+└────────┬───────┴────────┬─────────┴─────────────┬───────────────┘
+         │                │                       │
+         └────────────────┴───────────────────────┘
+                          │
+                    Shared Backend
+              (Roz Cloud — REST + gRPC)
+```
+
+## The Three Products
+
+### Studio — Authentication and Dashboard
+
+The web app at [bedrockdynamics.studio](https://bedrockdynamics.studio). Handles user accounts (via Clerk OAuth), API key management, task monitoring, session history, and billing. When a user signs up, Studio provisions their tenant in Roz automatically.
+
+Studio is the auth hub — Substrate and roz CLI both authenticate through it.
+
+### Substrate — Native IDE for Robotics
+
+A Rust-native desktop IDE (not Electron) built for robotics engineers. Combines a code editor, physics simulation viewer, 3D visualization, telemetry analysis, and MCAP recording in one application.
+
+Substrate connects to:
+- **Gazebo/MuJoCo** — via `gz-transport-rs`, a pure Rust implementation of the Gazebo transport protocol
+- **Roz Cloud** — via gRPC bidirectional streaming for AI agent sessions
+- **Hardware** — via MAVLink, ROS 2, and direct serial connections
+
+### roz — AI Agent Platform
+
+The core orchestration engine. Available as:
+- **CLI** (`roz`) — interactive REPL or headless `--non-interactive` mode
+- **Cloud** (`roz-server`) — REST + gRPC API on Fly.io
+- **Edge** (`roz-worker`) — runs on robots (Jetson, Pi, any Linux ARM/x86)
+
+roz's agent can write robot control code (WebAssembly), verify it in a Copper-rs sandbox, and deploy it — without human approval for routine operations.
+
+## How They Connect
+
+<Note>
+  All three products authenticate via Clerk and hit the same Roz API. Studio is the auth hub, Substrate is the robotics IDE, roz is the execution engine.
+</Note>
+
+### Data Flow
+
+```
+User in Substrate IDE                    User in roz CLI
+  │                                        │
+  │ Opens agent session (gRPC)            │ roz auth login → roz_sk_ key
+  │ Sends: "Move arm to (0.5, 0.3)"      │ roz --non-interactive --task "calibrate"
+  │                                        │
+  └──────────────┬─────────────────────────┘
+                 │
+          ┌──────┴──────┐
+          │  Roz Cloud  │
+          │  (gRPC/REST) │
+          └──────┬──────┘
+                 │
+     ┌───────────┼───────────┐
+     │           │           │
+  Agent Loop   Safety    Restate
+  (React/OODA) Guards   Workflows
+     │           │           │
+     │     ┌─────┴─────┐    │
+     │     │ Tool Call  │    │
+     │     │execute_code│    │
+     │     └─────┬─────┘    │
+     │           │           │
+     │   WASM Compile       │
+     │   (wasmtime)          │
+     │           │           │
+     │   Verify in Sim      │
+     │   (Copper sandbox)    │
+     │           │           │
+     │   Deploy to Robot    │
+     │   (via NATS)          │
+     │           │           │
+     └───────────┼───────────┘
+                 │
+          ┌──────┴──────┐
+          │ Edge Robot  │
+          │ roz-worker  │
+          │ Copper      │
+          │ Zenoh       │
+          │ roz-safety  │
+          └─────────────┘
+```
+
+### Provider Modes
+
+roz works with any LLM provider. Cloud is optional — everything except fleet management works without it.
+
+| Mode | Auth | How it works |
+|------|------|-------------|
+| **Roz Cloud** | `roz auth login` | Managed gateway, proxies to any model backend |
+| **OpenAI** | `roz auth login openai` | OAuth with ChatGPT subscription (flat rate) |
+| **Anthropic** | `ANTHROPIC_API_KEY` | Direct API, pay-per-token |
+| **Ollama** | None needed | Local models, fully offline |
+
+## The Agent Pipeline
+
+When a user says "wave the arm," here's what actually happens:
+
+<Steps>
+  <Step title="Agent receives context">
+    System prompt includes the robot's capabilities (from `robot.toml`), safety limits, and project instructions (from `AGENTS.md`).
+  </Step>
+  <Step title="Agent writes code">
+    The model generates WebAssembly Text (WAT) code implementing a `process(tick)` function — the control loop that runs on each robot tick.
+  </Step>
+  <Step title="Code compiles to WASM">
+    The `execute_code` tool compiles WAT to WASM via wasmtime. No `unsafe` code — the sandbox is capability-scoped.
+  </Step>
+  <Step title="Verified in simulation">
+    The WASM module runs 10 ticks in a Copper-rs sandbox. If any tick traps or violates safety bounds, the code is rejected and the agent retries.
+  </Step>
+  <Step title="Deployed to robot">
+    The verified `.cwasm` module is loaded into the Copper task graph on the edge device. The robot executes the control loop at the configured tick rate.
+  </Step>
+</Steps>
+
+This pipeline is tested end-to-end: `cargo test -p roz-agent --test e2e_code_execution`
+
+## Safety Architecture
+
+Safety is enforced at every layer — the agent cannot override its own safety guards.
+
+| Layer | What it does | Can agent override? |
+|-------|-------------|-------------------|
+| **Constitution** (Tier 1) | Physical harm prevention, e-stop, workspace bounds | Never |
+| **SafetyStack** | Runtime guards: velocity limits, geofence, battery | Never |
+| **roz-safety daemon** | Separate process: heartbeat watchdog, e-stop issuer | No (out-of-process) |
+| **Hardware interlocks** | Motor controller limits, endstops, brakes on power loss | No (hardware) |
+
+## Edge Deployment
+
+On a robot, the stack looks like:
+
+```
+┌─────────────────────────────────────┐
+│ roz-worker                          │
+│  ├─ NATS client (cloud dispatch)   │
+│  ├─ Copper runtime (task graph)    │
+│  │   ├─ Native tasks (sensors)     │
+│  │   ├─ WASM tasks (agent code)    │
+│  │   └─ Zenoh bridge (ROS 2)      │
+│  └─ WAL persistence (crash recovery)│
+├─────────────────────────────────────┤
+│ roz-safety daemon (separate process)│
+│  ├─ Heartbeat monitoring           │
+│  └─ E-stop on timeout              │
+├─────────────────────────────────────┤
+│ Hardware                            │
+│  ├─ Watchdog timer                 │
+│  ├─ Brakes (engage on power loss)  │
+│  └─ Endstops / current limiters   │
+└─────────────────────────────────────┘
+```
+
+**Network resilience:** If cloud connection drops, the worker falls back to local Ollama models. NATS reconnects automatically. The safety daemon issues e-stop if heartbeats are lost.
+
+## Multi-Agent Teams
+
+An orchestrator agent can spawn specialist workers on different robots:
+
+1. Orchestrator calls `spawn_worker` tool with a task prompt and target host
+2. Roz server creates a child task, dispatches via NATS to the target worker
+3. Child worker runs independently, publishes `TeamEvent`s to JetStream
+4. Orchestrator calls `watch_team` to monitor progress
+5. Workers can run different phases (React for planning, OodaReAct for physical execution)
+
+Team events flow through NATS JetStream with durable consumers — no events are lost even if the orchestrator briefly disconnects.
+
+## Technology Stack
+
+| Component | Technology | Why |
+|-----------|-----------|-----|
+| Language | Rust (edition 2024) | Safety-critical, no GC pauses, ARM cross-compilation |
+| On-robot runtime | [Copper-rs](https://github.com/copper-project/copper-rs) | Sub-microsecond task scheduling, deterministic replay |
+| WASM sandbox | [wasmtime](https://wasmtime.dev/) | Safe code execution, runs on any architecture |
+| Local comms | [Eclipse Zenoh](https://zenoh.io/) | Peer-to-peer, zero-copy SHM, ROS 2 Tier 1 middleware |
+| Cloud comms | [NATS](https://nats.io/) | Task dispatch, team events, JetStream persistence |
+| Simulation | [Gazebo](https://gazebosim.org/) via gz-transport-rs | Physics simulation, pure Rust transport (no C++ deps) |
+| Workflows | [Restate](https://restate.dev/) | Durable execution for task lifecycle |
+| Database | PostgreSQL + [sqlx](https://github.com/launchbadge/sqlx) | RLS on every table for tenant isolation |
+| Auth | [Clerk](https://clerk.com/) | OAuth, JWT, webhook-based tenant provisioning |
+| Deployment | [Fly.io](https://fly.io/) | Edge-close hosting, multiplexed REST+gRPC |
