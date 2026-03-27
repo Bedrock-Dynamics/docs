@@ -1,6 +1,85 @@
 ---
 title: "Mobile Robot (Nav2)"
-description: "Coming soon."
+description: "Differential-drive mobile robot with Nav2 navigation and 2-channel twist control via WASM."
 ---
 
-Content coming soon.
+## Simulation Container
+
+```bash
+docker pull bedrockdynamics/substrate-sim:ros2-nav2
+```
+
+The container bundles Gazebo Harmonic, ROS 2 Humble, Nav2, and an MCP server with navigation tools.
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 8090 | HTTP | MCP tool server |
+| 9090 | gRPC | ros2-bridge (odometry streaming + twist relay) |
+
+## MCP Tools
+
+The MCP server exposes two tools for high-level navigation at 1-3Hz.
+
+### `navigate_to`
+
+Sends a goal pose to Nav2's `NavigateToPose` action server. Nav2 plans a path and drives the robot to the target, handling obstacle avoidance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `x`, `y` | float | Target position in meters (map frame) |
+| `yaw` | float | Target heading in radians |
+
+### `follow_waypoints`
+
+Sends a sequence of waypoints to Nav2's `FollowWaypoints` action server. The robot visits each waypoint in order.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `waypoints` | array | List of `{x, y, yaw}` objects |
+
+## WASM Channels
+
+The `ChannelManifest::diff_drive()` manifest defines 2 twist command channels and 3 odometry state channels at 100Hz.
+
+### Command Channels (2)
+
+| Index | Name | Unit | Limits | Max Rate of Change |
+|-------|------|------|--------|--------------------|
+| 0 | `base/linear.x` | m/s | -1.0 to 1.0 | 0.5 m/s per tick |
+| 1 | `base/angular.z` | rad/s | -2.0 to 2.0 | 1.0 rad/s per tick |
+
+These two channels map directly to the `geometry_msgs/Twist` message used by differential-drive robots. `linear.x` is forward/backward velocity, `angular.z` is rotational velocity (positive = counter-clockwise).
+
+### State Channels (3)
+
+| Index | Name | Unit | Type |
+|-------|------|------|------|
+| 0 | `base/odom.x` | m | Position |
+| 1 | `base/odom.y` | m | Position |
+| 2 | `base/odom.yaw` | rad | Position |
+
+Odometry is in the odom frame, relative to where the robot started.
+
+## Twist Publishing
+
+The gRPC bridge publishes WASM velocity commands as `geometry_msgs/Twist` messages on the `/cmd_vel` topic via gz-transport. This bypasses Nav2 — when a WASM controller is active, it has direct control of the robot's motors.
+
+<Note>
+  If both Nav2 and a WASM controller are sending velocity commands, the results are undefined. Use MCP tools **or** WASM controllers for a given task, not both simultaneously.
+</Note>
+
+## Example
+
+A WASM controller that drives the robot in a slow arc:
+
+```wat
+;; Drive forward at 0.3 m/s
+(call $set_command (i32.const 0) (f64.const 0.3))
+;; Turn left at 0.5 rad/s
+(call $set_command (i32.const 1) (f64.const 0.5))
+```
+
+## Source Code
+
+- Channel manifest: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/blob/main/crates/roz-core/src/channels.rs) (`ChannelManifest::diff_drive()`)
+- Twist bridge: [`crates/roz-worker/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-worker)

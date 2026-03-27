@@ -1,6 +1,98 @@
 ---
 title: "Manipulator (UR5)"
-description: "Coming soon."
+description: "6-DOF robot arm with MoveIt2 motion planning and 6-channel velocity control via WASM."
 ---
 
-Content coming soon.
+## Simulation Container
+
+```bash
+docker pull bedrockdynamics/substrate-sim:ros2-manipulator
+```
+
+The container bundles Gazebo Harmonic, ROS 2 Humble, MoveIt2, and an MCP server. It exposes two ports:
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 8090 | HTTP | MCP tool server |
+| 9090 | gRPC | ros2-bridge (joint state streaming + trajectory relay) |
+
+## MCP Tools
+
+The MCP server exposes four tools for high-level arm control at 1-3Hz.
+
+### `get_joint_state`
+
+Returns the current position and velocity of all 6 joints as a JSON object. No parameters.
+
+### `move_to_named_target`
+
+Moves the arm to a predefined MoveIt2 named configuration.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `target` | string | Named target (e.g. `"home"`, `"up"`, `"ready"`) |
+
+### `move_to_pose`
+
+Plans and executes a motion to a Cartesian pose using MoveIt2.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `x`, `y`, `z` | float | Target position in meters (base frame) |
+| `qx`, `qy`, `qz`, `qw` | float | Target orientation as quaternion |
+
+### `stop_arm`
+
+Immediately halts all joint motion. Sends zero-velocity commands and cancels any active MoveIt2 trajectory. No parameters.
+
+## WASM Channels
+
+The `ChannelManifest::ur5()` manifest defines 6 velocity command channels and 12 state channels (6 position + 6 velocity), all running at 100Hz.
+
+### Command Channels (6)
+
+| Index | Name | Unit | Limits |
+|-------|------|------|--------|
+| 0 | `shoulder_pan_joint/velocity` | rad/s | -pi to pi |
+| 1 | `shoulder_lift_joint/velocity` | rad/s | -pi to pi |
+| 2 | `elbow_joint/velocity` | rad/s | -pi to pi |
+| 3 | `wrist_1_joint/velocity` | rad/s | -pi to pi |
+| 4 | `wrist_2_joint/velocity` | rad/s | -pi to pi |
+| 5 | `wrist_3_joint/velocity` | rad/s | -pi to pi |
+
+Each command channel has a `max_rate_of_change` of 0.5 rad/s per tick (50 rad/s^2 acceleration limit at 100Hz). Each velocity command is paired with its corresponding position state channel for position limit enforcement.
+
+### State Channels (12)
+
+| Index | Name | Unit | Type |
+|-------|------|------|------|
+| 0-5 | `{joint}/position` | rad | Position |
+| 6-11 | `{joint}/velocity` | rad/s | Velocity |
+
+Position limits are +/- 2*pi rad. Position state channels come first (indices 0-5), followed by velocity state channels (indices 6-11).
+
+## Velocity Integration
+
+The WASM controller writes velocity commands. The gRPC bridge relay converts these into position+velocity trajectory points for the `scaled_joint_trajectory_controller` in ros2_control. On each tick:
+
+1. Read current joint positions from state channels
+2. Integrate velocity over the tick period to produce a target position
+3. Send a `JointTrajectory` message with both the target position and velocity
+
+This approach gives smooth motion because the controller receives both where to go and how fast to get there.
+
+## Example
+
+A WASM controller that rotates the shoulder pan joint:
+
+```wat
+;; Set channel 0 (shoulder_pan_joint) to 0.2 rad/s
+(call $set_command (i32.const 0) (f64.const 0.2))
+```
+
+The safety filter clamps this to the configured limits before it reaches the bridge. The bridge integrates the velocity into a trajectory point and sends it to the `scaled_joint_trajectory_controller`.
+
+## Source Code
+
+- Channel manifest: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/blob/main/crates/roz-core/src/channels.rs) (`ChannelManifest::ur5()`)
+- gRPC bridge: [`crates/roz-worker/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-worker)

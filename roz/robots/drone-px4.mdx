@@ -1,6 +1,94 @@
 ---
 title: "Drone (PX4)"
-description: "Coming soon."
+description: "PX4-based quadcopter with MAVLink control and 4-channel body velocity via WASM."
 ---
 
-Content coming soon.
+## Simulation Container
+
+```bash
+docker pull bedrockdynamics/substrate-sim:px4-gazebo-humble
+```
+
+The container bundles PX4 SITL, Gazebo Harmonic, and the MAVLink gRPC bridge.
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 9090 | gRPC | ros2-bridge (telemetry streaming + MAVLink command relay) |
+
+## Flight Sequence
+
+PX4 requires a specific command sequence to enter velocity control. The agent (or MCP tools) must follow these steps in order:
+
+<Steps>
+  <Step title="ARM">
+    Send the arm command. The flight controller enables the motors.
+  </Step>
+  <Step title="TAKEOFF">
+    Command takeoff to a target altitude. PX4 handles the climb autonomously.
+  </Step>
+  <Step title="OFFBOARD">
+    Switch to OFFBOARD mode. PX4 now accepts external velocity setpoints. The bridge must stream setpoints at 20Hz or PX4 will revert to the previous mode.
+  </Step>
+  <Step title="Velocity Control">
+    WASM controllers write body velocity commands at 100Hz. The bridge relays these as MAVLink `SET_POSITION_TARGET_LOCAL_NED` messages at 20Hz.
+  </Step>
+  <Step title="LAND">
+    Command landing. PX4 handles the descent and motor disarm.
+  </Step>
+</Steps>
+
+## WASM Channels
+
+The `ChannelManifest::quadcopter()` manifest defines 4 body velocity command channels and 4 position state channels at 100Hz.
+
+### Command Channels (4)
+
+| Index | Name | Unit | Limits | Max Rate of Change |
+|-------|------|------|--------|--------------------|
+| 0 | `body/velocity.x` | m/s | -5.0 to 5.0 | 2.0 m/s per tick |
+| 1 | `body/velocity.y` | m/s | -5.0 to 5.0 | 2.0 m/s per tick |
+| 2 | `body/velocity.z` | m/s | -3.0 to 3.0 | 1.5 m/s per tick |
+| 3 | `body/yaw_rate` | rad/s | -pi/2 to pi/2 | 1.0 rad/s per tick |
+
+### State Channels (4)
+
+| Index | Name | Unit | Type |
+|-------|------|------|------|
+| 0 | `body/position.x` | m | Position |
+| 1 | `body/position.y` | m | Position |
+| 2 | `body/position.z` | m | Position |
+| 3 | `body/yaw` | rad | Position |
+
+## NED Frame Convention
+
+<Warning>
+  PX4 uses the NED (North-East-Down) coordinate frame where +Z points **downward**. The roz channel interface uses a body frame where +Z points **upward**. The bridge negates `vz` when converting between the two frames. Writing a positive `body/velocity.z` in your WASM controller makes the drone go **up**.
+</Warning>
+
+## MAVLink Bridge
+
+The gRPC bridge handles all MAVLink protocol details:
+
+- **Companion heartbeat**: The bridge sends a heartbeat on the onboard port so PX4 recognizes it as a companion computer.
+- **20Hz setpoint streaming**: OFFBOARD mode requires continuous setpoints. The bridge maintains a 20Hz stream, using the latest WASM output each cycle.
+- **COMMAND_LONG**: Flight mode transitions (ARM, TAKEOFF, LAND, OFFBOARD) use `COMMAND_LONG` messages. The bridge handles acknowledgment and retry.
+
+<Note>
+  PX4 requires `NaN` for unused `COMMAND_LONG` parameters. The bridge fills unused parameter slots with `f32::NAN` — do not use `0.0` as a placeholder.
+</Note>
+
+## Example
+
+A WASM controller that moves the drone forward and up:
+
+```wat
+;; Move forward at 1 m/s
+(call $set_command (i32.const 0) (f64.const 1.0))
+;; Climb at 0.5 m/s (bridge negates for NED)
+(call $set_command (i32.const 2) (f64.const 0.5))
+```
+
+## Source Code
+
+- Channel manifest: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/blob/main/crates/roz-core/src/channels.rs) (`ChannelManifest::quadcopter()`)
+- MAVLink bridge: [`crates/roz-worker/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-worker)

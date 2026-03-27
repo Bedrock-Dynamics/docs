@@ -1,6 +1,81 @@
 ---
 title: "Drone (ArduPilot)"
-description: "Coming soon."
+description: "ArduPilot-based quadcopter with GUIDED mode velocity control and 4-channel WASM interface."
 ---
 
-Content coming soon.
+## Simulation Container
+
+```bash
+docker pull bedrockdynamics/substrate-sim:ardupilot-gazebo
+```
+
+The container bundles ArduPilot SITL, Gazebo Harmonic, and the MAVLink gRPC bridge.
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 9090 | gRPC | ros2-bridge (telemetry streaming + MAVLink command relay) |
+
+## Differences from PX4
+
+ArduPilot and PX4 are both MAVLink-based autopilots, but they differ in several ways that affect the bridge implementation:
+
+| Aspect | PX4 | ArduPilot |
+|--------|-----|-----------|
+| Velocity control mode | OFFBOARD | GUIDED |
+| Mode switching | `COMMAND_LONG` with `MAV_CMD_DO_SET_MODE` | `SET_MODE` message with ArduPilot mode numbers |
+| MAVLink dialect | Standard MAVLink 2 | `ardupilotmega` dialect with extra messages |
+| Setpoint message | `SET_POSITION_TARGET_LOCAL_NED` | `SET_POSITION_TARGET_LOCAL_NED` (same) |
+| Arming | `COMMAND_LONG` with `MAV_CMD_COMPONENT_ARM_DISARM` | Same, but may require arming checks to be disabled in SITL |
+
+The flight sequence is similar but uses GUIDED mode instead of OFFBOARD:
+
+<Steps>
+  <Step title="ARM">
+    Send the arm command. ArduPilot enables the motors.
+  </Step>
+  <Step title="TAKEOFF">
+    Command takeoff. ArduPilot handles the climb in its current mode.
+  </Step>
+  <Step title="GUIDED">
+    Switch to GUIDED mode. ArduPilot accepts external velocity setpoints.
+  </Step>
+  <Step title="Velocity Control">
+    WASM controllers write body velocity commands at 100Hz. The bridge relays these as MAVLink setpoint messages.
+  </Step>
+  <Step title="LAND">
+    Switch to LAND mode. ArduPilot handles descent and motor disarm.
+  </Step>
+</Steps>
+
+## WASM Channels
+
+ArduPilot drones use the same `ChannelManifest::quadcopter()` manifest as PX4 drones — 4 body velocity command channels and 4 position state channels at 100Hz.
+
+### Command Channels (4)
+
+| Index | Name | Unit | Limits |
+|-------|------|------|--------|
+| 0 | `body/velocity.x` | m/s | -5.0 to 5.0 |
+| 1 | `body/velocity.y` | m/s | -5.0 to 5.0 |
+| 2 | `body/velocity.z` | m/s | -3.0 to 3.0 |
+| 3 | `body/yaw_rate` | rad/s | -pi/2 to pi/2 |
+
+### State Channels (4)
+
+| Index | Name | Unit | Type |
+|-------|------|------|------|
+| 0 | `body/position.x` | m | Position |
+| 1 | `body/position.y` | m | Position |
+| 2 | `body/position.z` | m | Position |
+| 3 | `body/yaw` | rad | Position |
+
+The NED frame negation applies here too — the bridge negates `vz` so that positive values in the WASM controller mean "go up."
+
+<Warning>
+  ArduPilot support is less tested than PX4. The SITL simulation and bridge integration have had less validation. If you encounter issues, please report them at [github.com/BedrockDynamics/roz-oss](https://github.com/BedrockDynamics/roz-oss/issues).
+</Warning>
+
+## Source Code
+
+- Channel manifest: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/blob/main/crates/roz-core/src/channels.rs) (`ChannelManifest::quadcopter()`)
+- MAVLink bridge: [`crates/roz-worker/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-worker)
