@@ -1,6 +1,101 @@
 ---
 title: "What is roz?"
-description: "Coming soon."
+description: "roz is a Physical AI Agent Runtime — an LLM agent that writes WASM code to control real robots at 100Hz."
 ---
 
-Content coming soon.
+<Warning>
+  **Research Preview** — APIs and safety guarantees are under active development. Not recommended for production deployment on physical hardware without additional safety validation.
+</Warning>
+
+roz is an open-source runtime that lets LLM agents control physical robots. You describe what the robot should do in natural language, and the agent reasons about the task, writes executable control code, and deploys it to the robot in real time. The agent handles the full loop: perception, planning, code generation, safety verification, and execution.
+
+The core insight behind roz is that LLMs can write real-time control code, not just plans. Where frameworks like NemoClaw and OpenClaw generate task plans that a separate execution layer interprets, roz generates WASM bytecode that runs directly in a safety sandbox at 100Hz. The agent is not just suggesting what to do — it is writing the motor commands.
+
+This means roz can handle tasks that require continuous, closed-loop control: smooth trajectories, reactive obstacle avoidance, force-feedback manipulation. The agent reads sensor state, writes code that transforms it into motor commands, and iterates on that code based on the results.
+
+## Two Control Paths
+
+roz provides two complementary ways for the agent to control a robot.
+
+**Path A — MCP Tools (1-3Hz).** The agent calls high-level tools like `move_to_pose`, `navigate_to`, or `takeoff` through the Model Context Protocol. Each Docker sim container bundles its own MCP server with robot-specific tools. This path is best for discrete actions: go to a waypoint, pick up an object, land.
+
+**Path B — WASM Controllers (100Hz).** The agent writes WAT (WebAssembly Text) code that compiles to WASM and runs in a wasmtime sandbox at 100Hz. The controller reads sensor state and writes motor commands through a robot-agnostic channel interface. This path handles continuous control: smooth trajectories, oscillating motions, reactive behaviors.
+
+The agent chooses which path to use based on the task. Simple moves use MCP tools. Complex or continuous behaviors use WASM controllers. The agent can also combine both — for example, using MCP tools to move to a starting position, then deploying a WASM controller for a precision task.
+
+Learn more in [Two Control Paths](/roz/concepts/two-control-paths).
+
+## Supported Robots
+
+| Type | Sim Container | MCP Tools | WASM Channels |
+|------|--------------|-----------|---------------|
+| Manipulator (UR5) | `ros2-manipulator` | move_to_pose, get_joint_state, stop_arm | 6 joint velocities |
+| Drone (PX4) | `px4-gazebo-humble` | takeoff, land, go_to | 4 body velocities |
+| Drone (ArduPilot) | `ardupilot-gazebo` | arm, takeoff, go_to | 4 body velocities |
+| Mobile (Nav2) | `ros2-nav2` | navigate_to, follow_waypoints | 2 twist components |
+
+All sim containers are available on Docker Hub under `bedrockdynamics/substrate-sim`. Each container bundles Gazebo, the robot's middleware stack (MoveIt2, PX4, ArduPilot, or Nav2), and an MCP server that exposes robot-specific tools to the agent.
+
+## What LLM Providers Are Supported?
+
+roz is provider-agnostic. The agent runtime works with any of these LLM backends:
+
+| Provider | Models | Setup |
+|----------|--------|-------|
+| Anthropic | Claude 4, Claude 3.5 Sonnet | API key |
+| OpenAI | GPT-4, GPT-4o | API key |
+| Google | Gemini 2.5 Pro, Gemini 2.5 Flash | API key |
+| Ollama | Any local model | `ollama serve` (no key needed) |
+
+## What's Included
+
+roz is a fully self-hostable stack. The open-source release includes everything you need to run locally or deploy to your own infrastructure.
+
+<CardGroup cols={2}>
+  <Card
+    title="CLI & Interactive TUI"
+    icon="terminal"
+    href="/roz/reference/cli-commands"
+  >
+    Launch simulations, start interactive sessions, manage controllers, and inspect robot state from the command line.
+  </Card>
+  <Card
+    title="Agent Runtime"
+    icon="brain"
+    href="/roz/concepts/agent-modes"
+  >
+    Multi-turn reasoning with tool use, WASM code generation, and safety guards. Supports React mode (pure reasoning) and OODA mode (physical execution).
+  </Card>
+  <Card
+    title="WASM Sandbox"
+    icon="shield"
+    href="/roz/concepts/wasm-controllers"
+  >
+    Wasmtime-based execution environment that runs agent-generated code at 100Hz. Memory-isolated, deterministic, with automatic verification before deployment.
+  </Card>
+  <Card
+    title="Safety Filter"
+    icon="gauge"
+    href="/roz/concepts/safety-architecture"
+  >
+    Hardware-limit enforcement on every control cycle. Clamps velocity, acceleration, and position to configured bounds. Heartbeat monitoring with automatic e-stop.
+  </Card>
+  <Card
+    title="Sim Container Launcher"
+    icon="docker"
+    href="/roz/robots/manipulator"
+  >
+    Docker-based simulation management. Pull a container, start a sim, and the agent connects automatically. No ROS 2 or Gazebo installation required on your host.
+  </Card>
+  <Card
+    title="Channel Interface"
+    icon="arrows-left-right"
+    href="/roz/concepts/channel-interface"
+  >
+    Robot-agnostic abstraction layer between WASM controllers and physical actuators. Write one controller pattern, run it on any supported robot type.
+  </Card>
+</CardGroup>
+
+## Source Code
+
+roz is open source under the Apache-2.0 license. The repository is at [github.com/BedrockDynamics/roz-oss](https://github.com/BedrockDynamics/roz-oss).

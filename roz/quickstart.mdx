@@ -1,6 +1,146 @@
 ---
 title: "Quick Start"
-description: "Coming soon."
+description: "Control a simulated UR5 arm with natural language in under 5 minutes."
 ---
 
-Content coming soon.
+This guide walks you through launching a simulated robot arm, giving it a natural language command, and watching the agent write real-time control code to make it move.
+
+<Note>
+  Before you begin, make sure you have [installed roz](/roz/installation), pulled the manipulator sim container, and configured an LLM provider.
+</Note>
+
+## Start the Simulation
+
+Launch the UR5 manipulator simulation:
+
+```bash
+roz sim start manipulator
+```
+
+This starts the Docker container with Gazebo, MoveIt2, and the MCP server. Wait for the readiness check to complete — the CLI will print `Sim ready` when the robot is initialized and accepting commands.
+
+## Launch Interactive Mode
+
+Start an interactive session with the agent:
+
+```bash
+roz
+```
+
+You will see a prompt where you can type natural language commands. The agent has already connected to the running simulation and knows what robot it is controlling.
+
+## Give It a Command
+
+Type a command:
+
+```
+> wave the arm back and forth
+```
+
+The agent will reason about the task, decide that a continuous oscillating motion requires a WASM controller (not a discrete MCP tool call), write WAT code, and deploy it.
+
+## What Happens Behind the Scenes
+
+<Steps>
+  <Step title="Agent receives robot capabilities">
+    When the session starts, the agent loads the robot's channel manifest — a description of available sensor inputs and motor outputs. For the UR5, this is 6 joint velocity channels plus joint state feedback. The agent also discovers the MCP tools available from the sim container.
+  </Step>
+
+  <Step title="Agent writes WAT code">
+    The LLM generates WebAssembly Text (WAT) code that implements a sine wave on the shoulder joint. The code reads a tick counter and computes `sin(tick * frequency) * amplitude` to produce an oscillating velocity command.
+
+    ```wat
+    (module
+      (import "env" "get_tick" (func $get_tick (result i64)))
+      (import "env" "set_channel" (func $set_channel (param i32 f64)))
+      (func (export "step")
+        (local $t f64)
+        (local.set $t
+          (f64.div
+            (f64.convert_i64_u (call $get_tick))
+            (f64.const 100.0)))
+        ;; shoulder_pan: sin wave at 0.5 Hz
+        (call $set_channel
+          (i32.const 0)
+          (f64.mul
+            (f64.const 0.3)
+            (call $sin (local.get $t))))))
+    ```
+  </Step>
+
+  <Step title="Code compiles and verifies">
+    The WAT compiles to WASM bytecode via wasmtime. Before deployment, the runtime executes the controller for 100 ticks in a dry-run sandbox to verify it does not trap, does not exceed memory limits, and produces outputs within the robot's configured bounds.
+  </Step>
+
+  <Step title="Deployed to 100Hz Copper loop">
+    The verified WASM module is loaded into the Copper runtime, which calls the controller's `step` function at 100Hz. Each tick, the controller reads sensor state and writes velocity commands to the channel interface.
+  </Step>
+
+  <Step title="Safety filter clamps outputs">
+    Every command passes through the safety filter before reaching the robot. The filter enforces velocity limits, acceleration limits, and position bounds configured for the UR5. If the agent's code produces an unsafe value, the filter clamps it to the nearest safe value.
+  </Step>
+
+  <Step title="Commands flow to Gazebo">
+    The clamped velocity commands cross the bridge into the Docker sim container, where they are forwarded to the Gazebo physics engine via ROS 2 topics. The arm moves. Joint state feedback streams back to the agent for the next reasoning turn.
+  </Step>
+</Steps>
+
+## What Just Happened
+
+You described a behavior in plain English. The agent:
+
+1. Understood that "wave back and forth" means a continuous oscillating motion
+2. Chose the WASM control path because this requires real-time, smooth control (not a discrete action)
+3. Wrote valid WAT code that computes a sine wave
+4. Verified the code was safe before deployment
+5. Deployed it to a 100Hz control loop with hardware-limit enforcement
+6. The arm moved in Gazebo with the commanded motion
+
+The entire sequence — from your prompt to the arm moving — takes a few seconds. The agent writes code, not plans. The safety filter ensures the code cannot exceed the robot's physical limits.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Two Control Paths"
+    icon="code-branch"
+    href="/roz/concepts/two-control-paths"
+  >
+    Understand when the agent uses MCP tools versus WASM controllers, and how it decides between them.
+  </Card>
+  <Card
+    title="WASM Controllers"
+    icon="microchip"
+    href="/roz/concepts/wasm-controllers"
+  >
+    Deep dive into the WASM sandbox, channel interface, verification process, and the WAT code the agent generates.
+  </Card>
+  <Card
+    title="Supported Robots"
+    icon="robot"
+    href="/roz/robots/manipulator"
+  >
+    Explore all supported robot types: manipulator, PX4 drone, ArduPilot drone, and Nav2 mobile robot.
+  </Card>
+  <Card
+    title="Safety Architecture"
+    icon="shield"
+    href="/roz/concepts/safety-architecture"
+  >
+    Learn about the safety filter, heartbeat monitoring, e-stop system, and hardware limit enforcement.
+  </Card>
+  <Card
+    title="Deployment"
+    icon="server"
+    href="/roz/deployment/local-mode"
+  >
+    Run roz in local mode, self-host the full stack, or deploy to edge hardware alongside your robot.
+  </Card>
+  <Card
+    title="Source Code"
+    icon="github"
+    href="https://github.com/BedrockDynamics/roz-oss"
+  >
+    Browse the source, read the crate documentation, and contribute to the project.
+  </Card>
+</CardGroup>

@@ -1,6 +1,151 @@
 ---
 title: "Installation"
-description: "Coming soon."
+description: "Install roz, pull a sim container, and configure your LLM provider."
 ---
 
-Content coming soon.
+This guide covers installing the roz CLI, pulling a simulation container, and configuring an LLM provider so the agent can reason about your robot.
+
+## Prerequisites
+
+| Requirement | Minimum |
+|-------------|---------|
+| **Rust** | 1.92 or later ([rustup.rs](https://rustup.rs/)) |
+| **Docker** | Docker Desktop or Docker Engine ([docker.com](https://www.docker.com/products/docker-desktop/)) |
+| **LLM API key** | Anthropic, OpenAI, Google, or local Ollama |
+
+<Note>
+  Docker must be running before you start a simulation. The code editor, agent runtime, and WASM sandbox work without Docker, but you need a sim container to actually control a robot.
+</Note>
+
+## Install the CLI
+
+Install from crates.io:
+
+```bash
+cargo install roz-cli
+```
+
+Or clone and build from source:
+
+```bash
+git clone https://github.com/BedrockDynamics/roz-oss.git
+cd roz-oss
+cargo install --path crates/roz-cli
+```
+
+Verify the installation:
+
+```bash
+roz --version
+```
+
+## Pull a Sim Container
+
+Each supported robot has a Docker sim container that bundles Gazebo, the robot's middleware stack, and an MCP server. Pull the one you want to use:
+
+<Tabs>
+  <Tab title="Manipulator (UR5)">
+    ```bash
+    docker pull bedrockdynamics/substrate-sim:ros2-manipulator
+    ```
+
+    A 6-DOF UR5 arm in Gazebo with MoveIt2. MCP tools: `move_to_pose`, `get_joint_state`, `stop_arm`. WASM channels: 6 joint velocities.
+  </Tab>
+
+  <Tab title="Drone (PX4)">
+    ```bash
+    docker pull bedrockdynamics/substrate-sim:px4-gazebo-humble
+    ```
+
+    A PX4 quadcopter in Gazebo with MAVLink. MCP tools: `takeoff`, `land`, `go_to`. WASM channels: 4 body velocities.
+  </Tab>
+
+  <Tab title="Drone (ArduPilot)">
+    ```bash
+    docker pull bedrockdynamics/substrate-sim:ardupilot-gazebo
+    ```
+
+    An ArduPilot quadcopter in Gazebo. MCP tools: `arm`, `takeoff`, `go_to`. WASM channels: 4 body velocities.
+  </Tab>
+
+  <Tab title="Mobile (Nav2)">
+    ```bash
+    docker pull bedrockdynamics/substrate-sim:ros2-nav2
+    ```
+
+    A differential-drive robot in Gazebo with Nav2. MCP tools: `navigate_to`, `follow_waypoints`. WASM channels: 2 twist components.
+  </Tab>
+</Tabs>
+
+## Configure Your LLM Provider
+
+The agent needs an LLM to reason about tasks and generate control code. Set the API key for your provider:
+
+<Tabs>
+  <Tab title="Anthropic (Claude)">
+    ```bash
+    export ANTHROPIC_API_KEY=sk-ant-...
+    ```
+
+    Uses Claude by default. Recommended for WASM code generation — Claude produces the most reliable WAT output.
+  </Tab>
+
+  <Tab title="OpenAI (GPT-4)">
+    ```bash
+    export OPENAI_API_KEY=sk-...
+    ```
+
+    Set the provider when launching:
+
+    ```bash
+    roz --provider openai
+    ```
+  </Tab>
+
+  <Tab title="Google (Gemini)">
+    ```bash
+    export GOOGLE_API_KEY=...
+    ```
+
+    Set the provider when launching:
+
+    ```bash
+    roz --provider google
+    ```
+  </Tab>
+
+  <Tab title="Ollama (Local)">
+    Start the Ollama server (no API key needed):
+
+    ```bash
+    ollama serve
+    ```
+
+    Set the provider when launching:
+
+    ```bash
+    roz --provider ollama
+    ```
+
+    <Note>
+      Local models vary in their ability to generate valid WAT code. For best results with WASM controllers, use a cloud provider. Ollama works well for MCP-tool-only workflows.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Verify Everything
+
+Run the built-in diagnostic to check that all dependencies are configured correctly:
+
+```bash
+roz doctor
+```
+
+This checks for:
+
+- Rust toolchain version
+- Docker availability and daemon status
+- LLM provider connectivity
+- Sim container images on disk
+
+If everything passes, you are ready to start. Head to the [Quick Start](/roz/quickstart) to control your first robot.
