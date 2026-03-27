@@ -1,6 +1,158 @@
 ---
 title: "Architecture Guide"
-description: "Coming soon."
+description: "How the roz crates fit together and where to extend the platform."
 ---
 
-Content coming soon.
+## Crate Map
+
+roz is split into 12 crates. Each has a single responsibility, and dependencies flow downward.
+
+```
+roz-cli / roz-server          <- binary entry points
+  |           |
+  |       roz-worker           <- edge worker (OODA loop via NATS)
+  |           |
+  +-------roz-agent            <- agent runtime, tool dispatch, safety guards
+  |           |
+  |       roz-safety           <- watchdog, heartbeat, e-stop
+  |           |
+  +-------roz-copper           <- Copper-rs runtime integration
+  |           |
+  +-------roz-zenoh            <- Zenoh pub/sub, Zenoh<->ROS 2 bridge
+  |           |
+  +-------roz-local            <- local simulation launcher, Docker management
+  |           |
+  +-------roz-nats             <- NATS client wrappers, subject definitions
+  |           |
+  +-------roz-db               <- sqlx migrations, queries, RLS
+  |           |
+  +-------roz-core             <- domain types, no IO (everything depends on this)
+  |
+  +-------roz-test             <- test helpers (testcontainers, fixtures)
+```
+
+**`roz-core`** is the foundation. It defines all domain types (`ChannelManifest`, `RobotType`, `WasmCommand`, safety limits) with serde derives. It has no IO dependencies -- pure data structures and logic.
+
+**`roz-agent`** is the brain. It contains the agent loop, model abstraction (Anthropic, OpenAI, Gemini, Ollama), tool dispatch, the constitution (tiered system prompt), and WASM code generation.
+
+**`roz-zenoh`** handles local peer-to-peer communication. It bridges between roz's internal channel interface and ROS 2 topics via Zenoh, enabling real-time sensor reads and actuator commands without going through NATS.
+
+## Where to Add a New Robot Type
+
+Adding a new robot type involves two pieces: a channel manifest and a simulation container.
+
+### 1. Define the Channel Manifest
+
+The `ChannelManifest` in `roz-core/src/channels.rs` describes the robot's input/output channels -- how many joints, what coordinate frame, velocity vs. position control.
+
+Add a factory function that returns the manifest for your robot type:
+
+```rust
+// crates/roz-core/src/channels.rs
+impl ChannelManifest {
+    pub fn my_robot() -> Self {
+        Self {
+            name: "my_robot".into(),
+            commands: vec![
+                ChannelDef::new("joint_0", ChannelKind::Velocity, /* limits */),
+                // ...
+            ],
+            sensors: vec![
+                ChannelDef::new("joint_0_pos", ChannelKind::Position, /* limits */),
+                // ...
+            ],
+        }
+    }
+}
+```
+
+### 2. Build a Docker Simulation Container
+
+Each robot type ships as a Docker container that bundles:
+
+- **Gazebo** (or another simulator)
+- **Robot middleware** (MoveIt2, PX4, Nav2, etc.)
+- **An MCP server** that exposes robot-specific tools to the agent
+
+The container must expose an MCP endpoint that the agent connects to. See the existing containers under `bedrockdynamics/substrate-sim` on Docker Hub for examples.
+
+## Where to Add a New Tool
+
+Tools are how the agent interacts with the world. Each tool implements the `TypedToolExecutor` trait in `roz-agent`.
+
+### 1. Implement the Trait
+
+```rust
+// crates/roz-agent/src/tools/my_tool.rs
+use crate::dispatch::{ToolContext, TypedToolExecutor};
+
+pub struct MyTool;
+
+impl TypedToolExecutor for MyTool {
+    type Input = MyToolInput;
+    type Output = MyToolOutput;
+
+    fn name(&self) -> &str { "my_tool" }
+
+    async fn execute(
+        &self,
+        input: Self::Input,
+        ctx: &ToolContext,
+    ) -> Result<Self::Output, ToolError> {
+        // implementation
+    }
+}
+```
+
+### 2. Register in the Dispatcher
+
+Add the tool to the dispatcher's tool registry so the agent can discover and invoke it.
+
+## Agent Loop Flow
+
+The agent loop is the core execution cycle in `roz-agent/src/agent_loop.rs`. It supports two modes:
+
+1. **React mode** -- pure LLM reasoning with tool use. The agent thinks and calls tools, but does not directly control hardware.
+2. **OODA mode** -- physical execution. The agent observes sensor state, orients, decides, and acts in a continuous loop.
+
+The flow for each turn:
+
+```
+model.complete(messages)
+    |
+    v
+parse tool calls from response
+    |
+    v
+dispatch each tool via ToolExecutor
+    |
+    v
+safety check on results
+    |
+    v
+append results to conversation
+    |
+    v
+loop (until TurnComplete or safety stop)
+```
+
+Safety checks run after every tool execution. If a safety violation is detected, the loop halts and the agent receives an error message explaining what was blocked.
+
+## roz-zenoh: Local Communication
+
+`roz-zenoh` handles the real-time data path between the agent and the robot. While NATS handles cloud-to-edge messaging, Zenoh provides local peer-to-peer communication with microsecond latency.
+
+Key responsibilities:
+
+- **Zenoh-to-ROS 2 bridge** -- translates between Zenoh topics and ROS 2 topics, so WASM controllers can read sensor data and write motor commands without a direct ROS 2 dependency
+- **Channel relay** -- maps the abstract `ChannelManifest` channels to concrete Zenoh topics
+- **Local discovery** -- finds simulation containers and physical hardware on the local network
+
+## Safety Invariants
+
+These are non-negotiable constraints enforced across the codebase:
+
+- **`unsafe` is denied** workspace-wide via `#![deny(unsafe_code)]`. This is a safety-critical robotics platform -- no exceptions.
+- **Constitution tiers cannot be overridden.** The agent's system prompt has four tiers: Safety-Critical, Security, Operational, and Quality. The top two tiers (Safety-Critical and Security) can never be overridden by user configuration or agent reasoning.
+- **WASM verification before deployment.** Every WASM controller is verified against safety limits before it runs on hardware. If verification fails, the controller is rejected.
+- **Heartbeat monitoring.** The safety daemon monitors agent heartbeats and triggers an automatic e-stop if the agent becomes unresponsive.

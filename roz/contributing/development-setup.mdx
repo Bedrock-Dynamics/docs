@@ -1,6 +1,101 @@
 ---
 title: "Development Setup"
-description: "Coming soon."
+description: "Clone, build, and run roz locally."
 ---
 
-Content coming soon.
+## Prerequisites
+
+- **Rust 1.92+** (pinned in `rust-toolchain.toml` -- the toolchain installs automatically)
+- **Docker** (required for simulation containers and database tests)
+- **Protobuf compiler** (`protoc`) for gRPC codegen
+
+## Clone and Build
+
+```bash
+git clone https://github.com/BedrockDynamics/roz-oss.git
+cd roz-oss
+```
+
+Enable the pre-commit hook that enforces formatting:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Build the full workspace:
+
+```bash
+cargo build --workspace
+```
+
+## Run Tests
+
+Unit tests run without external services:
+
+```bash
+cargo test --workspace --exclude roz-db --exclude roz-server
+```
+
+Database tests (`roz-db`, `roz-server`) require a Postgres instance:
+
+```bash
+docker run -d --name roz-test-db \
+  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=roz_test \
+  -p 5433:5432 postgres:16
+
+export DATABASE_URL="postgres://postgres:test@localhost:5433/roz_test"
+cargo test -p roz-db
+```
+
+<Warning>
+  Never run multiple integration test suites in parallel. Testcontainers spawns a new Postgres container per run, and stale containers accumulate fast.
+</Warning>
+
+## Linting
+
+Run all four checks before committing:
+
+```bash
+cargo fmt --check
+cargo clippy --workspace -- -D warnings
+cargo build --workspace
+cargo test --workspace
+```
+
+The `.cargo/config.toml` provides shortcuts:
+
+| Alias | Command |
+|-------|---------|
+| `cargo c` | `cargo clippy` |
+| `cargo t` | `cargo test` |
+| `cargo b` | `cargo build` |
+| `cargo fmt-c` | `cargo fmt --check` |
+| `cargo dev` | `cargo build --profile fastdev` |
+
+## Conventions
+
+- **Edition 2024** with Rust 1.92.0 minimum
+- **`unsafe` is denied** workspace-wide -- this is a safety-critical robotics platform
+- **Clippy pedantic + nursery** enabled as warnings, denied in CI (`-D warnings`)
+- **Line width** 120 chars (configured in `.rustfmt.toml`)
+- **Error handling** via `thiserror` for library crates, `anyhow` sparingly for binaries
+- **All domain types** live in `roz-core` with `Serialize`/`Deserialize` derives
+
+## Build Profiles
+
+```bash
+cargo build --profile fastdev       # deps optimized, app debug (fast iteration)
+cargo build --release               # standard release
+cargo build --profile release-lto   # full LTO + strip (distribution builds)
+```
+
+## Contributing Workflow
+
+1. Fork the repository and create a feature branch
+2. Make your changes following the conventions above
+3. Run `cargo fmt --check && cargo clippy --workspace -- -D warnings`
+4. Run `cargo test --workspace`
+5. Submit a pull request
+
+By contributing, you agree that your contributions will be licensed under the [Apache-2.0 License](https://github.com/BedrockDynamics/roz-oss/blob/main/LICENSE).

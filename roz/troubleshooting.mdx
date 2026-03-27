@@ -1,6 +1,99 @@
 ---
 title: "Troubleshooting"
-description: "Coming soon."
+description: "Common issues and how to fix them."
 ---
 
-Content coming soon.
+## Docker Simulation Won't Start
+
+**Symptoms:** Container exits immediately, or `docker ps` shows no running container.
+
+**Solutions:**
+
+1. Verify Docker is running: `docker info`
+2. Check for port conflicts -- simulation containers bind to specific ports. Run `docker ps -a` to see if a stale container is holding the port.
+3. Pull the latest image: `docker pull bedrockdynamics/substrate-sim:<robot-type>`
+4. Wait for the health check. Simulation containers take 30-60 seconds to fully initialize Gazebo and the middleware stack. Check logs with `docker logs -f <container>`.
+
+## MCP Connection Timeout
+
+**Symptoms:** The agent reports a timeout connecting to the MCP server, or tool calls fail with connection errors.
+
+**Solutions:**
+
+The simulation container needs up to 60 seconds to start Gazebo, spawn the robot model, and initialize ros2_control. The MCP server only becomes available after all of this is ready.
+
+```bash
+# Watch the container logs for "MCP server ready"
+docker logs -f <container>
+```
+
+If the container is healthy but the MCP connection still fails, verify the port mapping matches what the agent expects.
+
+## "joint_names and values must have same length"
+
+**Symptoms:** The arm controller throws this error when sending joint commands.
+
+**Cause:** The number of command channels in your `ChannelManifest` does not match the number of joints the robot controller expects.
+
+**Fix:** Check the manifest factory function for your robot type in `roz-core/src/channels.rs`. The number of command channels must exactly match the robot's joint count (e.g., 6 for a UR5).
+
+## API Key Errors
+
+**Symptoms:** `401 Unauthorized` or `invalid API key` errors.
+
+**Solutions:**
+
+1. Verify the `ROZ_API_KEY` environment variable is set:
+   ```bash
+   echo $ROZ_API_KEY
+   ```
+2. API keys use the format `roz_sk_<random>`. If the key does not start with `roz_sk_`, it is not a valid roz API key.
+3. Keys are passed as `Authorization: Bearer <key>` in HTTP headers.
+4. Keys do not expire by default. If a key is not working, it may have been explicitly revoked.
+
+## WASM Verification Failed
+
+**Symptoms:** `"verification failed on tick N"` -- the WASM controller was rejected before deployment.
+
+**Cause:** The controller violated a safety limit during pre-deployment verification. The sandbox runs the controller for a fixed number of ticks against simulated inputs, and at least one output value exceeded the configured bounds.
+
+**Solutions:**
+
+1. Check the error message for which channel and limit was exceeded (velocity, acceleration, or position).
+2. Review the WAT code the agent generated -- look for values that exceed the limits defined in the `ChannelManifest`.
+3. If the limits are too restrictive for your use case, adjust them in the manifest. Be cautious -- these limits exist to protect hardware.
+
+## Arm Doesn't Move
+
+**Symptoms:** Commands are sent but the robot arm stays stationary in simulation.
+
+**Solutions:**
+
+1. **Bridge relay not started.** The Zenoh-to-ROS 2 bridge must be running for commands to reach the simulation. Check that the bridge process is active.
+2. **Wrong container image version.** Older container images may not have the correct ros2_control configuration. Pull the latest image.
+3. **Controller not active.** In the container, verify the joint controller is loaded and active:
+   ```bash
+   docker exec <container> ros2 control list_controllers
+   ```
+
+## Drone Doesn't Fly
+
+**Symptoms:** Takeoff command succeeds but the drone stays on the ground, or velocity commands have no effect.
+
+**Solutions:**
+
+1. **PX4 not ready.** The PX4 SITL needs time to initialize. Wait for the `HEARTBEAT` messages in the container logs before sending commands.
+2. **NaN parameters.** `COMMAND_LONG` MAVLink messages require all 7 parameter fields. Unset parameters must be `0.0`, not `NaN`. Check the MCP tool implementation.
+3. **NED frame sign convention.** PX4 uses North-East-Down (NED) coordinates. A positive Z velocity means *downward*. To ascend, send a negative Z velocity in NED, or use the body-frame velocity interface which handles the conversion.
+
+## Flaky Watchdog Test
+
+**Symptoms:** The heartbeat/watchdog test passes locally but fails intermittently in CI.
+
+**Cause:** CPU contention. The watchdog test has tight timing requirements (heartbeat intervals measured in milliseconds). On a loaded CI runner, the OS scheduler can delay the heartbeat thread long enough to trigger a false timeout.
+
+**Fix:** Run with a single test thread:
+
+```bash
+cargo test -p roz-safety -- --test-threads=1
+```

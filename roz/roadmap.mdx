@@ -1,6 +1,56 @@
 ---
 title: "Roadmap"
-description: "Coming soon."
+description: "What's next for roz."
 ---
 
-Content coming soon.
+<Info>
+  This roadmap reflects current priorities as of March 2026. Timelines and scope may shift as the project evolves. Contributions toward any of these areas are welcome.
+</Info>
+
+## Legged Robots
+
+Quadruped and humanoid robot manifests are the next major robot type expansion. This includes channel definitions for multi-leg gait controllers, balance feedback loops, and new simulation containers with appropriate physics.
+
+The channel interface already supports arbitrary joint counts, so the core work is in manifest definitions, simulation containers, and gait-specific safety limits.
+
+## Real Hardware Validation
+
+roz currently validates safety exclusively in simulation. Moving to real hardware requires additional safety layers:
+
+- Hardware-in-the-loop (HIL) testing with physical e-stop circuits
+- Gradual authority transfer (simulation-verified controllers run at reduced power before full deployment)
+- Sensor fault detection (distinguish "sensor reports zero" from "sensor is disconnected")
+
+This is the most safety-critical item on the roadmap.
+
+## gz-transport-rs Proto Coverage
+
+The `gz-transport-rs` crate currently covers 83 of approximately 180+ Gazebo transport protobuf definitions. Expanding coverage enables richer simulation feedback -- camera images, point clouds, contact forces, and other sensor modalities that the agent can use for spatial reasoning.
+
+Contributions here are straightforward: each proto is a standalone addition with codegen and a thin Rust wrapper.
+
+## Skills Marketplace
+
+A registry for community-contributed agent skills -- reusable tool bundles that extend what the agent can do. Examples:
+
+- Welding path planners
+- Pick-and-place strategies for specific gripper types
+- Inspection routines for common industrial parts
+
+Skills are implemented as `TypedToolExecutor` implementations and can be loaded at runtime.
+
+## Visual Spatial Reasoning
+
+Camera stream integration for vision-based tasks. The agent would receive image frames from simulation or hardware cameras and use multimodal LLM capabilities for:
+
+- Object detection and pose estimation
+- Visual servoing (closed-loop control guided by camera feedback)
+- Scene understanding for task planning
+
+This depends on LLM provider support for real-time image streams alongside text context.
+
+## ROS 2 Native Integration
+
+Today, roz communicates with ROS 2 through a Zenoh bridge running inside Docker simulation containers. A native ROS 2 integration would allow direct topic subscription and service calls without the bridge layer.
+
+This removes the Docker requirement for teams that already have a ROS 2 workspace, reduces latency, and simplifies the deployment stack for production hardware.

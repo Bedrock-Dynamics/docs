@@ -1,6 +1,142 @@
 ---
 title: "Testing Guide"
-description: "Coming soon."
+description: "How to run and write tests for roz."
 ---
 
-Content coming soon.
+## Running Tests
+
+### Unit Tests
+
+Most crates have unit tests that run without external services:
+
+```bash
+cargo test --workspace --exclude roz-db --exclude roz-server
+```
+
+Or use the alias:
+
+```bash
+cargo t
+```
+
+### Database Tests
+
+`roz-db` and `roz-server` tests require a Postgres instance:
+
+```bash
+docker run -d --name roz-test-db \
+  -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=roz_test \
+  -p 5433:5432 postgres:16
+
+export DATABASE_URL="postgres://postgres:test@localhost:5433/roz_test"
+cargo test -p roz-db
+```
+
+### Ignored Tests
+
+Tests marked `#[ignore]` require external infrastructure -- Docker simulation containers, API keys, NATS, or other services that are not available in a standard dev environment.
+
+Run them explicitly:
+
+```bash
+cargo test -- --ignored --nocapture --test-threads=1
+```
+
+<Warning>
+  Always use `--test-threads=1` for ignored tests. These tests often spawn Docker containers or connect to shared services, and running them in parallel causes port conflicts and resource contention.
+</Warning>
+
+### E2E Tests
+
+End-to-end tests validate the full stack: real LLM calls, real Docker simulation containers, and real sensor data flowing through the system. These require environment variables for API credentials and target URLs.
+
+```bash
+cargo e2e
+```
+
+## Test Helpers: roz-test
+
+The `roz-test` crate provides shared test infrastructure:
+
+```rust
+use roz_test::nats::{nats_container, nats_url};
+
+#[tokio::test]
+async fn my_nats_test() {
+    let _guard = nats_container().await;
+    let url = nats_url().await;
+    // url points to a fresh NATS container
+}
+```
+
+- **`nats_container()`** -- spins up a NATS container via testcontainers and returns a guard that cleans it up on drop
+- **`nats_url()`** -- returns the connection URL for the running NATS container
+
+For database tests, use `#[sqlx::test]` which handles Postgres lifecycle automatically.
+
+## Test Design Rules
+
+Tests must verify **production code**, not test harness behavior.
+
+### No Tautological Tests
+
+```rust
+// BAD: tests serde_json, not your code
+let msg = json!({"type": "foo"});
+assert_eq!(msg["type"], "foo");
+
+// GOOD: tests the actual production code path
+let msg = MyType::new("foo");
+let json = serde_json::to_value(&msg).unwrap();
+assert_eq!(json["type"], "foo");
+```
+
+### Separate Logic from IO
+
+Extract pure logic into functions that can be tested without mocking IO. Test the pure functions directly.
+
+```rust
+// BAD: test requires a database connection
+#[tokio::test]
+async fn test_transform() {
+    let db = setup_db().await;
+    let raw = db.fetch("key").await;
+    let result = transform(raw);
+    assert_eq!(result, expected);
+}
+
+// GOOD: test the transform in isolation
+#[test]
+fn test_transform() {
+    let raw = RawData { /* ... */ };
+    let result = transform(raw);
+    assert_eq!(result, expected);
+}
+```
+
+### Test the Right Layer
+
+| Test type | Annotation | What it tests |
+|-----------|-----------|---------------|
+| Pure logic | `#[test]` | Data transforms, builders, validation |
+| Async logic | `#[tokio::test]` | Async functions, channels, tasks |
+| Database | `#[sqlx::test]` | Queries, migrations, RLS |
+| API | `axum::test` helpers | HTTP routes, middleware, auth |
+| Infrastructure | `#[ignore]` | NATS, Docker sims, external APIs |
+
+### Zero Tech Debt
+
+If you see a problem in a test -- or anywhere else -- fix it now. Do not log it for later, do not add a TODO comment. Every issue spotted is an issue fixed.
+
+## What E2E Tests Cover
+
+End-to-end tests exercise the full production path:
+
+- **Agent reasoning** -- a real LLM receives a task and generates a plan
+- **Tool execution** -- the agent calls MCP tools against a running simulation container
+- **WASM deployment** -- the agent writes WAT code, it compiles to WASM, and the controller runs at 100Hz in the sandbox
+- **Sensor feedback** -- real sensor data flows from Gazebo through the bridge into the agent's context
+- **Safety enforcement** -- safety limits are verified on actual control commands
+
+These tests are slow (30-120 seconds each) and require API keys and Docker. They are marked `#[ignore]` and run separately from the fast unit test suite.
