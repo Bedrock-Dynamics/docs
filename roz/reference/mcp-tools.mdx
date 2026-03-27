@@ -1,6 +1,89 @@
 ---
 title: "MCP Tools"
-description: "Coming soon."
+description: "Model Context Protocol tools available in each sim container."
 ---
 
-Content coming soon.
+roz uses the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) to discover and call robot-specific tools at runtime. Each Docker sim container bundles an MCP server on port 8090 that exposes tools tailored to the robot's capabilities.
+
+## How Tool Discovery Works
+
+When you start a simulation with `roz sim start`, the following happens:
+
+1. The Docker container starts with Gazebo, the robot's middleware stack, and an MCP server.
+2. The agent connects to the MCP server on port 8090.
+3. The agent calls `tools/list` to discover available tools and their schemas.
+4. Discovered tools are registered with the agent session via `RegisterTools`.
+
+Tools are scoped to the container that provides them. When a container stops, its tools are automatically unregistered from the session.
+
+## ros2-manipulator
+
+Tools for controlling a 6-DOF arm (UR5) via MoveIt2.
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `get_joint_state` | Returns current joint positions and velocities for all 6 joints. | None |
+| `move_to_named_target` | Moves the arm to a predefined named pose (e.g. `"home"`, `"up"`, `"ready"`). | `target: string` |
+| `move_to_pose` | Plans and executes a motion to a Cartesian pose. | `x, y, z: float`, `qx, qy, qz, qw: float` |
+| `stop_arm` | Immediately stops all arm motion. | None |
+
+```bash
+# Example: move to home position
+# The agent calls this tool automatically when you say "move to home"
+{
+  "name": "move_to_named_target",
+  "parameters": { "target": "home" }
+}
+```
+
+## px4-gazebo-humble
+
+The PX4 drone container uses gRPC (MAVSDK) for flight commands rather than MCP. The agent communicates with the PX4 autopilot through a gRPC bridge that translates high-level commands to MAVLink.
+
+| Command | Description | Parameters |
+|---------|-------------|------------|
+| `arm` | Arms the drone motors. | None |
+| `takeoff` | Arms and takes off to a specified altitude. | `altitude: float` |
+| `land` | Lands at current position. | None |
+| `go_to` | Flies to a GPS or local coordinate. | `lat, lon, alt: float` |
+| `set_offboard` | Enters offboard mode for WASM velocity control. | None |
+
+<Note>
+PX4 flight commands go through gRPC, not MCP. The agent handles this difference transparently — you give the same natural language instructions regardless of the underlying protocol.
+</Note>
+
+## ardupilot-gazebo
+
+The ArduPilot drone container provides similar flight commands through its own interface.
+
+| Command | Description | Parameters |
+|---------|-------------|------------|
+| `arm` | Arms the drone motors. | None |
+| `takeoff` | Arms and takes off to a specified altitude. | `altitude: float` |
+| `land` | Lands at current position. | None |
+| `go_to` | Flies to a local coordinate. | `x, y, z: float` |
+
+## ros2-nav2
+
+Tools for controlling a differential drive mobile robot via the Nav2 stack.
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `navigate_to` | Sends a navigation goal to Nav2. The robot plans a path and drives to the target. | `x, y: float`, `yaw: float` |
+| `follow_waypoints` | Sends a sequence of waypoints for the robot to follow in order. | `waypoints: [{x, y, yaw}]` |
+
+## Custom MCP Servers
+
+If you build a custom sim container, you can bundle your own MCP server. The agent discovers tools from any MCP server that:
+
+1. Listens on port 8090 inside the container.
+2. Implements the MCP `tools/list` and `tools/call` endpoints.
+3. Returns valid JSON Schema for each tool's parameters.
+
+The MCP server can also provide a `substrate:workflow` prompt that gives the agent context about how to use the tools together. This prompt is injected into the agent's system context when the tools are registered.
+
+## MCP vs WASM
+
+MCP tools operate at 1-3Hz — they are discrete actions like "move to this pose" or "navigate to this point." For continuous, closed-loop control at 100Hz, the agent writes WASM controllers that use the [channel interface](/roz/reference/channel-manifests) instead.
+
+The agent chooses between MCP tools and WASM controllers based on the task. Simple discrete actions use MCP. Continuous or reactive behaviors use WASM. The agent can combine both in a single session.

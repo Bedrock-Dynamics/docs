@@ -1,6 +1,101 @@
 ---
 title: "Architecture"
-description: "Coming soon."
+description: "Crate structure, dependency graph, and data flow for the roz platform."
 ---
 
-Content coming soon.
+roz is a workspace of 12 Rust crates. Each crate has a single responsibility, and the dependency graph is intentionally shallow to keep compile times fast and the safety boundary clear.
+
+## Crate Overview
+
+| Crate | Type | Description |
+|-------|------|-------------|
+| `roz-core` | Library | Domain types, channel manifests, error types. No IO. Everything else depends on this. |
+| `roz-agent` | Library | Agent runtime: LLM abstraction, tool dispatch, OODA loop, safety guards, constitution. |
+| `roz-copper` | Library | Copper-rs runtime integration. On-robot task graph execution at 100Hz. |
+| `roz-local` | Library | Local agent loop, WASM compilation, sim container management, MCP client. |
+| `roz-cli` | Binary | Interactive TUI and command-line interface. Entry point for `roz` commands. |
+| `roz-safety` | Binary | Safety daemon: heartbeat tracker, e-stop monitoring, watchdog process. |
+| `roz-nats` | Library | NATS client wrappers, subject definitions, cloud messaging. |
+| `roz-zenoh` | Library | Zenoh client for local peer-to-peer comms between robot processes. |
+| `roz-test` | Library | Shared test utilities, fixtures, and helpers used across crate tests. |
+| `roz-db` | Library | sqlx migrations, queries, row-level security (RLS) on every table. |
+| `roz-server` | Binary | axum API server. REST + gRPC multiplexed on a single port. |
+| `roz-worker` | Binary | Edge worker binary. Connects via NATS, runs the OODA loop on-robot. |
+
+## Zenoh vs NATS
+
+roz uses two messaging systems for different scopes:
+
+- **Zenoh** handles local, peer-to-peer communication between processes on the same robot or local network. It provides low-latency pub/sub for sensor data, control commands, and state synchronization without requiring a broker.
+- **NATS** handles cloud communication between the API server, edge workers, and the safety daemon. It provides reliable messaging with subject-based routing across network boundaries.
+
+The split keeps latency-sensitive robot control traffic local (Zenoh) while using NATS for coordination that needs to cross network boundaries.
+
+## Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Cloud                                │
+│                                                             │
+│  ┌────────────┐    NATS     ┌────────────┐                  │
+│  │ roz-server │◄───────────►│ roz-worker │                  │
+│  │  (axum +   │             │  (edge)    │                  │
+│  │   tonic)   │             └─────┬──────┘                  │
+│  └─────┬──────┘                   │                         │
+│        │                          │                         │
+│        │ REST/gRPC                │ NATS                    │
+│        │                          │                         │
+│  ┌─────┴──────┐             ┌─────┴──────┐                  │
+│  │  roz-db    │             │ roz-safety │                  │
+│  │  (sqlx)    │             │ (watchdog) │                  │
+│  └────────────┘             └────────────┘                  │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                     Local / Robot                            │
+│                                                             │
+│  ┌────────────┐             ┌────────────┐                  │
+│  │  roz-cli   │────────────►│ roz-local  │                  │
+│  │  (TUI)     │             │  (agent +  │                  │
+│  └────────────┘             │   WASM)    │                  │
+│                             └─────┬──────┘                  │
+│                                   │                         │
+│                          Zenoh    │    MCP (port 8090)       │
+│                        ┌─────────┼─────────┐                │
+│                        ▼         ▼         ▼                │
+│                  ┌──────────┐ ┌──────┐ ┌──────────┐         │
+│                  │roz-copper│ │ WASM │ │ Sim      │         │
+│                  │ (100Hz)  │ │Sandbox│ │Container │         │
+│                  └──────────┘ └──────┘ └──────────┘         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Dependency Graph
+
+The crate dependency structure keeps `roz-core` at the root with no IO dependencies. All other crates depend on `roz-core` for shared types.
+
+```
+roz-core  (no IO, domain types only)
+  ├── roz-agent     (+ LLM provider SDKs, tokio)
+  ├── roz-copper    (+ cu29, zenoh)
+  ├── roz-nats      (+ async-nats)
+  ├── roz-zenoh     (+ zenoh)
+  ├── roz-db        (+ sqlx)
+  ├── roz-safety    (+ tokio, nats)
+  ├── roz-test      (+ tokio, testcontainers)
+  ├── roz-local     (+ wasmtime, roz-agent, roz-zenoh)
+  ├── roz-server    (+ axum, tonic, roz-db, roz-agent, roz-nats)
+  ├── roz-worker    (+ roz-agent, roz-nats, roz-safety)
+  └── roz-cli       (+ roz-local, roz-agent, ratatui)
+```
+
+Key constraints enforced by the dependency graph:
+
+- `roz-core` has **zero** IO dependencies. It defines types only.
+- `unsafe` is **denied** workspace-wide. This is a safety-critical robotics platform.
+- `roz-local` depends on `roz-agent` and `roz-zenoh` but not on `roz-server` or `roz-db` — it runs entirely on the local machine.
+- `roz-server` depends on `roz-db` and `roz-agent` but not on `roz-local` — it runs in the cloud.
+
+## Source Code
+
+The full crate structure is at [github.com/BedrockDynamics/roz-oss](https://github.com/BedrockDynamics/roz-oss).

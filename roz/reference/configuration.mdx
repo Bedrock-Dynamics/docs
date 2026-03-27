@@ -1,6 +1,169 @@
 ---
 title: "Configuration"
-description: "Coming soon."
+description: "Configuration files, environment variables, and LLM provider setup."
 ---
 
-Content coming soon.
+roz is configured through a combination of a local config file (`roz.toml`), a project-level agent instructions file (`AGENTS.md`), and environment variables.
+
+## roz.toml
+
+The primary configuration file. Created by `roz setup` and stored in your project root.
+
+```toml
+[agent]
+model = "claude-sonnet-4-20250514"
+provider = "anthropic"            # anthropic, openai, google, ollama
+max_context_tokens = 200000
+
+[spatial]
+enabled = true
+safety_filter = true
+control_rate_hz = 100
+
+[sim]
+default_robot = "ur5"
+auto_start = true                 # Start sim container on `roz` launch
+
+[server]
+api_url = "http://localhost:8080"
+```
+
+### Agent Section
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `model` | string | `"claude-sonnet-4-20250514"` | LLM model to use. |
+| `provider` | string | `"anthropic"` | LLM provider: `anthropic`, `openai`, `google`, `ollama`. |
+| `max_context_tokens` | integer | `200000` | Context window budget. The agent warns when usage exceeds 30%. |
+
+### Spatial Section
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable spatial (OODA) mode for physical robot control. |
+| `safety_filter` | bool | `true` | Enable the safety filter that clamps all channel values. |
+| `control_rate_hz` | integer | `100` | WASM controller execution frequency. |
+
+### Sim Section
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_robot` | string | `"ur5"` | Robot type for `roz sim start` when no argument is given. |
+| `auto_start` | bool | `true` | Automatically start the sim container when launching `roz`. |
+
+### Server Section
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `api_url` | string | `"http://localhost:8080"` | API endpoint for cloud sessions. |
+
+## AGENTS.md
+
+A Markdown file in your project root that provides project-specific instructions to the agent. The agent reads this file at session start and includes it as a system context block.
+
+```markdown
+# AGENTS.md
+
+## Project Context
+This workspace controls a UR5 arm mounted on a table.
+The home position is [0, -1.57, 0, -1.57, 0, 0] radians.
+
+## Safety Rules
+- Never move joint velocities above 1.0 rad/s during calibration.
+- Always return to home position before stopping.
+
+## Preferred Behaviors
+- Use smooth sinusoidal trajectories for demonstrations.
+- Log joint positions after every move_to_pose call.
+```
+
+The agent's constitution has four tiers. AGENTS.md can refine Tier 3 (Operational) rules and override Tier 4 (Quality) defaults, but it cannot override Tier 1 (Safety-Critical) or Tier 2 (Security) rules.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | For Anthropic provider | API key for Claude models. |
+| `OPENAI_API_KEY` | For OpenAI provider | API key for GPT models. |
+| `GOOGLE_API_KEY` | For Google provider | API key for Gemini models. |
+| `OLLAMA_URL` | For Ollama provider | Ollama server URL (default: `http://localhost:11434`). |
+| `ROZ_API_URL` | For cloud sessions | API server endpoint. |
+| `DATABASE_URL` | For roz-server | PostgreSQL connection string. |
+| `NATS_URL` | For roz-server/worker | NATS server URL. |
+
+Environment variables override values in `roz.toml`. You can also set them in a `.env` file in the project root.
+
+## LLM Provider Configuration
+
+### Anthropic (default)
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+```toml
+[agent]
+provider = "anthropic"
+model = "claude-sonnet-4-20250514"
+```
+
+Supported models: Claude 4, Claude 3.5 Sonnet, and other Anthropic models.
+
+### OpenAI
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+```toml
+[agent]
+provider = "openai"
+model = "gpt-4o"
+```
+
+Supported models: GPT-4, GPT-4o, and other OpenAI chat models.
+
+### Google
+
+```bash
+export GOOGLE_API_KEY="AI..."
+```
+
+```toml
+[agent]
+provider = "google"
+model = "gemini-2.5-pro"
+```
+
+Supported models: Gemini 2.5 Pro, Gemini 2.5 Flash, and other Gemini models.
+
+### Ollama (local)
+
+No API key needed. Start the Ollama server first:
+
+```bash
+ollama serve
+ollama pull llama3
+```
+
+```toml
+[agent]
+provider = "ollama"
+model = "llama3"
+```
+
+Ollama runs models locally with no network dependency. Useful for development, air-gapped environments, or when you want full control over the model.
+
+## API Authentication
+
+For cloud deployments (roz-server), API keys use the scheme `roz_sk_<random>`. Pass the key as a Bearer token:
+
+```bash
+curl -H "Authorization: Bearer roz_sk_..." http://localhost:8080/api/v1/sessions
+```
+
+Keys do not expire by default. They are permanent until explicitly revoked.
+
+## Source Code
+
+Configuration handling: [`crates/roz-cli/src/commands/config.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-cli/src/commands/config.rs)

@@ -1,6 +1,194 @@
 ---
 title: "Channel Manifests"
-description: "Coming soon."
+description: "Robot-agnostic channel interface definitions for WASM controllers."
 ---
 
-Content coming soon.
+A channel manifest describes a robot's control and state interface. It defines the named, typed, bounded channels that a WASM controller reads from and writes to on every tick. The safety filter uses these same definitions to clamp values before they reach actuators.
+
+Manifests follow the `ros2_control` / MuJoCo / Drake pattern: each robot exposes N command channels (written by the controller) and M state channels (read by the controller). The WASM controller accesses channels by index. The safety filter enforces per-channel limits.
+
+## Built-In Manifests
+
+roz ships with factory methods for common robot types. Each method returns a `ChannelManifest` with the correct channels, limits, and rates preconfigured.
+
+### UR5 Manipulator
+
+```rust
+ChannelManifest::ur5()
+```
+
+6-DOF arm with velocity control and full joint state feedback. 6 command channels, 12 state channels (6 position + 6 velocity).
+
+**Command Channels (6)**
+
+| Index | Name | Type | Unit | Limits | Rate Limit |
+|-------|------|------|------|--------|------------|
+| 0 | `shoulder_pan_joint/velocity` | Velocity | rad/s | -3.14, 3.14 | 0.5 |
+| 1 | `shoulder_lift_joint/velocity` | Velocity | rad/s | -3.14, 3.14 | 0.5 |
+| 2 | `elbow_joint/velocity` | Velocity | rad/s | -3.14, 3.14 | 0.5 |
+| 3 | `wrist_1_joint/velocity` | Velocity | rad/s | -3.14, 3.14 | 0.5 |
+| 4 | `wrist_2_joint/velocity` | Velocity | rad/s | -3.14, 3.14 | 0.5 |
+| 5 | `wrist_3_joint/velocity` | Velocity | rad/s | -3.14, 3.14 | 0.5 |
+
+Each command channel is paired with its corresponding position state channel (via `position_state_index`) for position limit enforcement.
+
+**State Channels (12)**
+
+| Index | Name | Type | Unit | Limits |
+|-------|------|------|------|--------|
+| 0 | `shoulder_pan_joint/position` | Position | rad | -6.28, 6.28 |
+| 1 | `shoulder_lift_joint/position` | Position | rad | -6.28, 6.28 |
+| 2 | `elbow_joint/position` | Position | rad | -6.28, 6.28 |
+| 3 | `wrist_1_joint/position` | Position | rad | -6.28, 6.28 |
+| 4 | `wrist_2_joint/position` | Position | rad | -6.28, 6.28 |
+| 5 | `wrist_3_joint/position` | Position | rad | -6.28, 6.28 |
+| 6 | `shoulder_pan_joint/velocity` | Velocity | rad/s | -3.14, 3.14 |
+| 7 | `shoulder_lift_joint/velocity` | Velocity | rad/s | -3.14, 3.14 |
+| 8 | `elbow_joint/velocity` | Velocity | rad/s | -3.14, 3.14 |
+| 9 | `wrist_1_joint/velocity` | Velocity | rad/s | -3.14, 3.14 |
+| 10 | `wrist_2_joint/velocity` | Velocity | rad/s | -3.14, 3.14 |
+| 11 | `wrist_3_joint/velocity` | Velocity | rad/s | -3.14, 3.14 |
+
+### Quadcopter
+
+```rust
+ChannelManifest::quadcopter()
+```
+
+Body-frame velocity control for drones. 4 command channels, 4 state channels.
+
+**Command Channels (4)**
+
+| Index | Name | Type | Unit | Limits | Rate Limit |
+|-------|------|------|------|--------|------------|
+| 0 | `body/velocity.x` | Velocity | m/s | -5.0, 5.0 | 2.0 |
+| 1 | `body/velocity.y` | Velocity | m/s | -5.0, 5.0 | 2.0 |
+| 2 | `body/velocity.z` | Velocity | m/s | -3.0, 3.0 | 1.5 |
+| 3 | `body/yaw_rate` | Velocity | rad/s | -1.57, 1.57 | 1.0 |
+
+**State Channels (4)**
+
+| Index | Name | Type | Unit | Limits |
+|-------|------|------|------|--------|
+| 0 | `body/position.x` | Position | m | -1000.0, 1000.0 |
+| 1 | `body/position.y` | Position | m | -1000.0, 1000.0 |
+| 2 | `body/position.z` | Position | m | 0.0, 500.0 |
+| 3 | `body/yaw` | Position | rad | -3.14, 3.14 |
+
+### Differential Drive
+
+```rust
+ChannelManifest::diff_drive()
+```
+
+Twist-based control for wheeled mobile robots. 2 command channels, 3 state channels.
+
+**Command Channels (2)**
+
+| Index | Name | Type | Unit | Limits | Rate Limit |
+|-------|------|------|------|--------|------------|
+| 0 | `base/linear.x` | Velocity | m/s | -1.0, 1.0 | 0.5 |
+| 1 | `base/angular.z` | Velocity | rad/s | -2.0, 2.0 | 1.0 |
+
+**State Channels (3)**
+
+| Index | Name | Type | Unit | Limits |
+|-------|------|------|------|--------|
+| 0 | `base/odom.x` | Position | m | -1000.0, 1000.0 |
+| 1 | `base/odom.y` | Position | m | -1000.0, 1000.0 |
+| 2 | `base/odom.yaw` | Position | rad | -3.14, 3.14 |
+
+### Generic Velocity
+
+```rust
+ChannelManifest::generic_velocity(n_joints, max_velocity)
+```
+
+Creates `n_joints` velocity command channels with symmetric limits `(-max_velocity, max_velocity)` and no state channels. Useful for quick prototyping or when you know the joint count and velocity limit but not the full robot specification.
+
+```rust
+// 4-joint arm with 2.0 rad/s limit
+let manifest = ChannelManifest::generic_velocity(4, 2.0);
+// Creates: joint0/velocity, joint1/velocity, joint2/velocity, joint3/velocity
+```
+
+## Channel Descriptor Fields
+
+Each channel is described by a `ChannelDescriptor` with these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | String | Channel name following `ros2_control` convention: `"joint_name/interface_type"` |
+| `interface_type` | InterfaceType | `Position`, `Velocity`, or `Effort` |
+| `unit` | String | Physical unit: `"rad"`, `"rad/s"`, `"m"`, `"m/s"`, `"Nm"`, `"N"` |
+| `limits` | (f64, f64) | `(min, max)` value limits enforced by the safety filter |
+| `default` | f64 | Safe default value, usually `0.0` |
+| `max_rate_of_change` | Option\<f64\> | Max change per tick for acceleration limiting. `None` = no rate limiting. |
+| `position_state_index` | Option\<usize\> | Index of the corresponding position state channel for position limit checks. |
+
+## Custom Manifests
+
+You can define custom manifests by constructing a `ChannelManifest` directly:
+
+```rust
+use roz_core::channels::{ChannelManifest, ChannelDescriptor, InterfaceType};
+
+let manifest = ChannelManifest {
+    robot_id: "my_robot".into(),
+    robot_class: "manipulator".into(),
+    control_rate_hz: 100,
+    commands: vec![
+        ChannelDescriptor {
+            name: "joint0/velocity".into(),
+            interface_type: InterfaceType::Velocity,
+            unit: "rad/s".into(),
+            limits: (-2.0, 2.0),
+            default: 0.0,
+            max_rate_of_change: Some(0.3),
+            position_state_index: Some(0),
+        },
+    ],
+    states: vec![
+        ChannelDescriptor {
+            name: "joint0/position".into(),
+            interface_type: InterfaceType::Position,
+            unit: "rad".into(),
+            limits: (-6.28, 6.28),
+            default: 0.0,
+            max_rate_of_change: None,
+            position_state_index: None,
+        },
+    ],
+};
+```
+
+## robot.toml
+
+When using `roz sim start`, the sim container provides its channel manifest automatically. For custom robots, you can define the manifest in a `robot.toml` file:
+
+```toml
+[manifest]
+robot_id = "my_robot"
+robot_class = "manipulator"
+control_rate_hz = 100
+
+[[manifest.commands]]
+name = "joint0/velocity"
+interface_type = "velocity"
+unit = "rad/s"
+limits = [-2.0, 2.0]
+default = 0.0
+max_rate_of_change = 0.3
+position_state_index = 0
+
+[[manifest.states]]
+name = "joint0/position"
+interface_type = "position"
+unit = "rad"
+limits = [-6.28, 6.28]
+default = 0.0
+```
+
+## Source Code
+
+Channel manifest definitions: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-core/src/channels.rs)

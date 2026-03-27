@@ -1,6 +1,188 @@
 ---
 title: "gRPC API"
-description: "Coming soon."
+description: "Bidirectional streaming gRPC API for agent sessions."
 ---
 
-Content coming soon.
+The roz API server exposes a gRPC service multiplexed on the same port as REST (default `localhost:8080`). gRPC requires HTTP/2. The service is defined in `proto/roz/v1/agent.proto`.
+
+gRPC reflection is enabled, so you can inspect the API with `grpcurl`:
+
+```bash
+grpcurl localhost:8080 list
+# roz.v1.AgentService
+```
+
+## Service Definition
+
+```protobuf
+service AgentService {
+  // Bidirectional streaming for interactive agent sessions.
+  rpc StreamSession(stream SessionRequest) returns (stream SessionResponse);
+
+  // Watch worker lifecycle events for a multi-agent task.
+  rpc WatchTeam(WatchTeamRequest) returns (stream TeamEvent);
+}
+```
+
+## Session Protocol
+
+A session is a bidirectional stream. The client sends `SessionRequest` messages and receives `SessionResponse` messages. The typical flow is:
+
+```
+Client                              Server
+  │                                    │
+  │─── StartSession ──────────────────►│
+  │◄── SessionStarted ────────────────│
+  │                                    │
+  │─── UserMessage ───────────────────►│
+  │◄── ThinkingDelta (stream) ────────│
+  │◄── TextDelta (stream) ────────────│
+  │◄── ToolRequest ───────────────────│
+  │─── ToolResult ────────────────────►│
+  │◄── TextDelta (stream) ────────────│
+  │◄── TurnComplete ─────────────────│
+  │                                    │
+  │─── CancelSession ────────────────►│
+  │                                    │
+```
+
+### StartSession
+
+Opens a new agent session. The server responds with `SessionStarted`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `environment_id` | string | Environment to run in. |
+| `host_id` | string (optional) | Target edge host for OODA mode. |
+| `model` | string (optional) | LLM model override (e.g. `"claude-sonnet-4-20250514"`). |
+| `tools` | ToolSchema[] | Initial set of tools the client provides. |
+| `history` | ConversationMessage[] | Previous conversation to resume. |
+| `project_context` | string[] | Project-specific context blocks (e.g. AGENTS.md content). |
+| `max_context_tokens` | uint32 (optional) | Context window budget. |
+
+### SessionStarted
+
+Confirms the session is active.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | Unique session identifier. |
+| `model` | string | The model being used. |
+| `permissions` | PermissionRule[] | Tool permission policies for this session. |
+
+### UserMessage
+
+Sends a user prompt to the agent.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | The user's message text. |
+| `context` | ContentBlock[] | Additional context (text or binary). |
+| `ai_mode` | string (optional) | Force a specific agent mode (`"react"` or `"ooda_re_act"`). |
+| `message_id` | string (optional) | Client-generated ID, echoed in response chunks. |
+| `tools` | ToolSchema[] | Full tool snapshot for this turn (replaces session tools if present). |
+| `system_context` | string (optional) | Per-turn system context injection. |
+
+### TextDelta / ThinkingDelta
+
+Streamed response chunks from the agent. `TextDelta` contains visible output. `ThinkingDelta` contains the model's internal reasoning (when extended thinking is enabled).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message_id` | string | Matches the `UserMessage.message_id`. |
+| `content` | string | The text chunk. |
+
+### TurnComplete
+
+Signals that the agent has finished responding to a `UserMessage`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message_id` | string | Matches the `UserMessage.message_id`. |
+| `usage` | TokenUsage | Token counts for this turn. |
+| `stop_reason` | string | Why the turn ended (`"end_turn"`, `"max_tokens"`, etc.). |
+
+## Tool Protocol
+
+Tools are functions that the client can execute on behalf of the agent. The flow is:
+
+1. Client registers tools via `StartSession.tools`, `RegisterTools`, or `UserMessage.tools`.
+2. During a turn, the server sends a `ToolRequest` asking the client to execute a tool.
+3. The client executes the tool and sends back a `ToolResult`.
+4. The agent incorporates the result and continues reasoning.
+
+### RegisterTools
+
+Dynamically add or remove tools mid-session. Typical use: when a sim container starts, the IDE discovers its MCP tools and registers them with the session.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source` | string (optional) | Identifies the tool set owner (e.g. container ID). Tools prefixed with `"{source}__"` are replaced. |
+| `tools` | ToolSchema[] | Replacement tool list. Empty list = unregister all tools from this source. |
+| `system_context` | string (optional) | Workflow guidance for this tool set. |
+
+### ToolRequest (server to client)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tool_call_id` | string | Unique ID for this tool invocation. |
+| `tool_name` | string | Name of the tool to execute. |
+| `parameters` | Struct | JSON parameters for the tool. |
+| `timeout_ms` | uint32 | Maximum execution time. |
+
+### ToolResult (client to server)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tool_call_id` | string | Matches the `ToolRequest.tool_call_id`. |
+| `success` | bool | Whether execution succeeded. |
+| `result` | string | Output text from the tool. |
+| `exit_code` | int32 (optional) | Shell exit code if applicable. |
+| `truncated` | bool | Whether the output was truncated. |
+| `duration_ms` | int64 (optional) | Wall-clock execution time. |
+
+### ToolSchema
+
+Describes a tool that the client can execute.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Tool name. |
+| `description` | string | Human-readable description. |
+| `parameters_schema` | Struct | JSON Schema for the tool's parameters. |
+| `timeout_ms` | uint32 | Default timeout. |
+| `category` | ToolCategoryHint | `PHYSICAL` or `PURE` (affects UI presence). |
+
+## Permission Protocol
+
+The server can request user approval before executing certain tools.
+
+1. Server sends `ActivityUpdate` with state `"waiting_approval"`.
+2. Client shows an approval dialog to the user.
+3. Client sends `PermissionDecision` with the `tool_call_id` and the user's decision.
+
+## WatchTeam
+
+Stream worker lifecycle events for multi-agent task execution.
+
+```bash
+# Watch events for a task
+grpcurl -d '{"task_id": "task_abc123"}' localhost:8080 roz.v1.AgentService/WatchTeam
+```
+
+Events include `WorkerStarted`, `WorkerPhase`, `WorkerToolCall`, `WorkerCompleted`, `WorkerFailed`, and `WorkerExited`.
+
+## Other Response Types
+
+| Message | Description |
+|---------|-------------|
+| `SessionError` | Error with `code`, `message`, and `retryable` flag. |
+| `Keepalive` | Periodic heartbeat with optional token usage. |
+| `Pong` | Response to client `Ping`. |
+| `ContextCompacted` | Notification that the context window was compacted (with before/after token counts). |
+| `PresenceHint` | UI visibility hint (`"full"`, `"mini"`, `"hidden"`). |
+| `ActivityUpdate` | Agent state change (`"thinking"`, `"calling_tool"`, `"idle"`, `"waiting_approval"`). |
+
+## Source Code
+
+Proto definition: [`proto/roz/v1/agent.proto`](https://github.com/BedrockDynamics/roz-oss/tree/main/proto/roz/v1/agent.proto)

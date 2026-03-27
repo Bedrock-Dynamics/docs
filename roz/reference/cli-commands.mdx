@@ -1,6 +1,130 @@
 ---
 title: "CLI Commands"
-description: "Coming soon."
+description: "Complete reference for the roz command-line interface."
 ---
 
-Content coming soon.
+The `roz` CLI is the primary interface for interacting with robots, managing simulations, and running agent sessions. Install it with `cargo install roz-cli` or build from source.
+
+## Interactive Mode
+
+```bash
+roz
+```
+
+Launches the interactive TUI (terminal user interface). This is the default when no subcommand is given. The TUI provides a chat-style interface where you type natural language instructions and the agent executes them against the connected robot.
+
+The agent handles tool calls, WASM controller deployment, and safety monitoring within the TUI session. Press `Ctrl+C` to stop the current action, or `Ctrl+D` to exit.
+
+## Simulation Management
+
+```bash
+roz sim start [ROBOT]    # Start a sim container (e.g. ur5, px4, nav2)
+roz sim stop [ROBOT]     # Stop a running sim container
+roz sim status           # Show status of all sim containers
+```
+
+`roz sim start` pulls the appropriate Docker image from `bedrockdynamics/substrate-sim` and starts a Gazebo simulation with the robot's full middleware stack. The container exposes an MCP server on port 8090 that the agent discovers automatically.
+
+```bash
+# Start a UR5 manipulator simulation
+roz sim start ur5
+
+# Check what's running
+roz sim status
+# ROBOT    STATUS    CONTAINER ID    PORTS
+# ur5      running   a1b2c3d4e5f6    8090, 11345
+
+# Stop it
+roz sim stop ur5
+```
+
+## Authentication
+
+```bash
+roz auth login     # Authenticate with the roz API
+roz auth status    # Show current authentication state
+```
+
+Authentication stores credentials locally. For self-hosted deployments, configure the API URL with `ROZ_API_URL` before logging in.
+
+## Doctor
+
+```bash
+roz doctor
+```
+
+Verifies that all prerequisites are installed and configured correctly. Checks for:
+
+- Docker daemon running
+- Required Docker images available
+- Rust toolchain version
+- Network connectivity to configured API endpoint
+- GPU availability (for Gazebo rendering)
+
+## Setup
+
+```bash
+roz setup
+```
+
+First-time configuration wizard. Walks through:
+
+1. LLM provider selection and API key configuration
+2. Docker verification
+3. Default robot type selection
+4. API endpoint configuration (for cloud deployments)
+
+## Configuration
+
+```bash
+roz config            # Show current configuration
+roz config set KEY VALUE
+roz config get KEY
+```
+
+View and edit the local `roz.toml` configuration file. See [Configuration](/roz/reference/configuration) for the full list of options.
+
+## Skill Management
+
+```bash
+roz skill list         # List available skills
+roz skill run NAME     # Run a named skill
+```
+
+Skills are reusable agent behaviors that can be triggered by name. They are defined in the project's skill directory and can include multi-step workflows, custom tool sequences, or templated prompts.
+
+## Non-Interactive Mode
+
+```bash
+roz run "move the arm to the home position"
+```
+
+Executes a single prompt without entering the TUI. Useful for scripting and CI pipelines. The agent runs to completion and exits.
+
+## Other Commands
+
+| Command | Description |
+|---------|-------------|
+| `roz recording list` | List recorded sessions |
+| `roz recording play ID` | Replay a recorded session |
+| `roz stream` | Stream raw sensor/state data from the robot |
+| `roz task create` | Create a task for edge worker execution |
+| `roz task status ID` | Check task execution status |
+| `roz trigger list` | List configured triggers |
+| `roz trigger create` | Create an event-driven trigger |
+| `roz host list` | List registered edge hosts |
+| `roz env` | Show environment variable configuration |
+| `roz trust` | Manage trusted tool permissions |
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--model MODEL` | Override the default LLM model |
+| `--robot ROBOT` | Override the default robot type |
+| `--verbose` | Enable debug logging |
+| `--api-url URL` | Override the API endpoint |
+
+## Source Code
+
+CLI implementation: [`crates/roz-cli/src/commands/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-cli/src/commands)
