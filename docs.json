@@ -129,6 +129,7 @@
               "roz/reference/cli-commands",
               "roz/reference/channel-manifests",
               "roz/reference/mcp-tools",
+              "roz/reference/rest-api",
               "roz/reference/grpc-api",
               "roz/reference/configuration"
             ]

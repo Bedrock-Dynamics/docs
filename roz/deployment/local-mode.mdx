@@ -1,23 +1,27 @@
 ---
 title: "Local Mode"
-description: "Run the full roz stack in a single process with no server, no database, and no network dependencies."
+description: "Run roz directly from the CLI — no server deployment needed."
 ---
 
-Local mode is the fastest way to use roz. Everything runs in-process on your machine — the CLI, agent runtime, Copper control loop, and sim container. No server, no database, no NATS. You bring your own LLM API key (or use Ollama for fully offline operation), and roz handles the rest.
+Local mode is the fastest way to use roz. The CLI runs the agent loop directly in your process — no roz-server, no database, no NATS to set up. You bring your own LLM API key (or use Ollama for fully offline operation), and roz handles the rest.
+
+<Note>
+  "Local mode" means **no roz-server in the middle** — the CLI runs the agent directly. The agent still makes HTTP calls to your LLM provider (Anthropic API, OpenAI API, or Ollama on `localhost:11434`) and connects to sim containers via MCP (HTTP) and the gRPC bridge. "Local" refers to the orchestration, not the network.
+</Note>
 
 ## How It Works
 
-The local mode data flow is a single pipeline with no network hops between components:
-
 ```
-roz-cli → roz-local → roz-agent → roz-copper → Docker sim
+roz-cli → roz-local → roz-agent → LLM provider (HTTP)
+                                 → roz-copper → sim container (MCP + gRPC bridge)
+                                              → real robot (MAVLink / ROS 2 / Zenoh)
 ```
 
 - **roz-cli** accepts your natural language input and renders the TUI.
-- **roz-local** orchestrates the session in-process (no gRPC, no REST).
-- **roz-agent** runs the LLM reasoning loop, generates WASM controllers, and dispatches MCP tool calls.
-- **roz-copper** executes WASM controllers at 100Hz and manages the channel interface to the sim.
-- **Docker sim** runs Gazebo + the robot middleware stack in a container pulled from Docker Hub.
+- **roz-local** orchestrates the session in your process (no roz-server needed).
+- **roz-agent** calls the LLM provider via HTTP, generates WASM controllers, and dispatches MCP tool calls.
+- **roz-copper** executes WASM controllers at 100Hz and manages the channel interface.
+- The target is either a **sim container** (Docker, for development) or a **real robot** (connected via MAVLink, ROS 2, or Zenoh).
 
 ## Configure Your LLM Provider
 
@@ -67,9 +71,11 @@ model = "llama3.1:70b"
 
 If no `roz.toml` is present, roz defaults to Anthropic Claude Sonnet if `ANTHROPIC_API_KEY` is set, then falls back to OpenAI, Google, and finally Ollama in that order.
 
-## Pull a Sim Container
+## Connect to a Robot
 
-All sim containers are published on Docker Hub under `bedrockdynamics/substrate-sim`. Pull the one for your robot:
+### Simulation (Docker containers)
+
+For development and testing, use pre-built sim containers from Docker Hub. Each bundles Gazebo, the robot's middleware, and an MCP server — no ROS 2 or Gazebo installation needed on your host.
 
 ```bash
 # UR5 manipulator arm
@@ -85,7 +91,15 @@ docker pull bedrockdynamics/substrate-sim:ardupilot-gazebo
 docker pull bedrockdynamics/substrate-sim:ros2-nav2
 ```
 
-Each container bundles Gazebo, the robot's middleware stack, and an MCP server. No ROS 2 or Gazebo installation is required on your host machine.
+### Real hardware
+
+For real robots, roz connects directly — no Docker container needed:
+
+- **Manipulators** — connect via ROS 2 (MoveIt2) or your robot's native API
+- **Drones** — connect via MAVLink over serial or UDP to the flight controller
+- **Mobile robots** — connect via ROS 2 Nav2 or Zenoh
+
+See the [Robots](/roz/robots/manipulator) pages for per-robot connection details and the [Edge Deployment](/roz/deployment/edge) guide for deploying to robot hardware.
 
 ## Start a Session
 

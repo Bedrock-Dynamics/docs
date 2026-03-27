@@ -88,6 +88,18 @@ A WASM controller that moves the drone forward and up:
 (call $set_command (i32.const 2) (f64.const 0.5))
 ```
 
+## Real Hardware
+
+For a physical PX4 drone (no Docker container):
+
+1. Connect via MAVLink over serial (TELEM2) or UDP to the flight controller
+2. The bridge communicates on PX4's onboard MAVLink instance (companion port)
+3. Same WASM channels and safety filter apply — velocity commands are clamped before reaching the flight controller
+
+<Warning>
+  Real hardware support is under active development. The safety guarantees are currently simulation-validated only. Always test in simulation first and have a manual override (RC transmitter) ready.
+</Warning>
+
 ## Source Code
 
 - Channel manifest: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/blob/main/crates/roz-core/src/channels.rs) (`ChannelManifest::quadcopter()`)

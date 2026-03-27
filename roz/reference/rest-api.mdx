@@ -1,0 +1,133 @@
+---
+title: "REST API"
+description: "HTTP REST endpoints for tasks, environments, hosts, API keys, and safety policies."
+---
+
+The roz server exposes a REST API alongside the [gRPC API](/roz/reference/grpc-api). Both are multiplexed on the same port (default `localhost:8080`). REST is used for resource management; gRPC is used for real-time agent sessions.
+
+All REST endpoints require authentication via API key header: `Authorization: Bearer roz_sk_...`
+
+The only exceptions are `/health` and the device auth endpoints.
+
+## Authentication
+
+### API Keys
+
+```bash
+# Create a key (self-hosted)
+curl -X POST http://localhost:8080/api/v1/auth-keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-key"}'
+
+# List keys
+curl http://localhost:8080/api/v1/auth-keys \
+  -H "Authorization: Bearer $ROZ_API_KEY"
+```
+
+API keys use the scheme `roz_sk_<random>`. Keys do not expire by default — they are permanent until explicitly revoked.
+
+### Device Auth
+
+For CLI login without browser redirect:
+
+```bash
+# Request device code
+curl -X POST http://localhost:8080/api/v1/device/code
+
+# Poll for token (user approves in browser)
+curl -X POST http://localhost:8080/api/v1/device/token \
+  -H "Content-Type: application/json" \
+  -d '{"device_code": "..."}'
+```
+
+## Tasks
+
+Tasks represent agent work items — a prompt to execute with a specific configuration.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/tasks` | Create a new task |
+| `GET` | `/api/v1/tasks` | List tasks (with pagination) |
+| `GET` | `/api/v1/tasks/:id` | Get task details |
+| `POST` | `/api/v1/tasks/:id/transition` | Transition task state |
+
+## Environments
+
+Environments define a robot configuration — which host, which safety policies, which tools are available.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/environments` | Create environment |
+| `GET` | `/api/v1/environments` | List environments |
+| `GET` | `/api/v1/environments/:id` | Get environment |
+| `PUT` | `/api/v1/environments/:id` | Update environment |
+| `DELETE` | `/api/v1/environments/:id` | Delete environment |
+
+## Hosts
+
+Hosts are registered edge workers (robots or compute nodes).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/hosts` | Register a host |
+| `GET` | `/api/v1/hosts` | List hosts |
+| `GET` | `/api/v1/hosts/:id` | Get host details |
+| `PUT` | `/api/v1/hosts/:id/status` | Update host status |
+
+## Safety Policies
+
+Define safety constraints that are enforced at runtime.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/safety-policies` | Create policy |
+| `GET` | `/api/v1/safety-policies` | List policies |
+| `GET` | `/api/v1/safety-policies/:id` | Get policy |
+| `PUT` | `/api/v1/safety-policies/:id` | Update policy |
+| `DELETE` | `/api/v1/safety-policies/:id` | Delete policy |
+
+## Commands
+
+Robot commands with state machine transitions (pending → running → completed/failed).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/commands` | Create command |
+| `GET` | `/api/v1/commands` | List commands |
+| `GET` | `/api/v1/commands/:id` | Get command |
+| `POST` | `/api/v1/commands/:id/transition` | Transition state |
+| `DELETE` | `/api/v1/commands/:id` | Delete command |
+
+## Triggers
+
+Scheduled or event-driven task execution.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/triggers` | Create trigger |
+| `GET` | `/api/v1/triggers` | List triggers |
+| `DELETE` | `/api/v1/triggers/:id` | Delete trigger |
+
+## Health
+
+```bash
+curl http://localhost:8080/health
+# Returns: {"status": "ok"}
+```
+
+No authentication required.
+
+## Metrics
+
+```bash
+curl http://localhost:8080/api/v1/metrics/tasks \
+  -H "Authorization: Bearer $ROZ_API_KEY"
+```
+
+Returns aggregate task metrics (counts by status, average duration).
+
+## Source Code
+
+- Routes: [`crates/roz-server/src/routes/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-server/src/routes)
+- All endpoints use tenant-scoped Row Level Security (RLS) — each API key is bound to a tenant, and queries only return that tenant's data.

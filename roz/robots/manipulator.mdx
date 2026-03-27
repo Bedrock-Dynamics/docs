@@ -92,6 +92,18 @@ A WASM controller that rotates the shoulder pan joint:
 
 The safety filter clamps this to the configured limits before it reaches the bridge. The bridge integrates the velocity into a trajectory point and sends it to the `scaled_joint_trajectory_controller`.
 
+## Real Hardware
+
+For a physical UR5 (no Docker container):
+
+1. Run your robot's `ros2_control` stack (UR driver + MoveIt2) on the robot or a companion computer
+2. Point roz at your ROS 2 environment — the MCP tools and WASM channels work the same way
+3. The `scaled_joint_trajectory_controller` is the same controller used in simulation
+
+<Warning>
+  Real hardware support is under active development. The safety guarantees are currently simulation-validated only. Additional validation is required before deploying WASM velocity controllers on physical hardware.
+</Warning>
+
 ## Source Code
 
 - Channel manifest: [`crates/roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/blob/main/crates/roz-core/src/channels.rs) (`ChannelManifest::ur5()`)
