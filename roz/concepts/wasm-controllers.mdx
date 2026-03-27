@@ -31,8 +31,10 @@ Controllers import host functions to interact with the robot. These are the avai
 | `state` | `count` | `() -> i32` | Number of state channels |
 | `math` | `sin` | `(f64) -> f64` | Sine (WASM has no trig intrinsics) |
 | `math` | `cos` | `(f64) -> f64` | Cosine |
+| `safety` | `request_estop` | `() -> ()` | Request an emergency stop |
 | `timing` | `now_ns` | `() -> i64` | Wall-clock nanoseconds since epoch |
 | `timing` | `sim_time_ns` | `() -> i64` | Simulation time in nanoseconds |
+| `telemetry` | `emit_metric` | `(f64) -> ()` | Record a scalar metric for observability |
 
 <Note>
   `timing::sim_time_ns` respects pause and speed scaling in simulation, while `timing::now_ns` returns real wall-clock time. Use `sim_time_ns` for time-based trajectories.

@@ -91,8 +91,8 @@ A `PhaseSpec` configures per-turn behavior within a session. Each phase specifie
 ```rust
 pub struct PhaseSpec {
     pub mode: PhaseMode,           // React or OodaReAct
-    pub tools: ToolSetFilter,      // All, Only([...]), Except([...])
-    pub trigger: PhaseTrigger,     // Immediate, OnToolResult, OnUserMessage
+    pub tools: ToolSetFilter,      // All, Named([...]), or None
+    pub trigger: PhaseTrigger,     // Immediate, AfterCycles(n), or OnToolSignal
 }
 ```
 
@@ -105,7 +105,7 @@ A two-phase task where the agent first plans in React mode, then executes in Ood
 ```json
 [
   { "mode": "react", "tools": "all", "trigger": "immediate" },
-  { "mode": "ooda_react", "tools": "all", "trigger": "on_user_message" }
+  { "mode": "ooda_react", "tools": "all", "trigger": "on_tool_signal" }
 ]
 ```
 
