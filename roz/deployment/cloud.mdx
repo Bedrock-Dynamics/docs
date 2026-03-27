@@ -1,6 +1,53 @@
 ---
 title: "Roz Cloud"
-description: "Coming soon."
+description: "Managed roz infrastructure with built-in provider gateway, team management, and fleet monitoring."
 ---
 
-Content coming soon.
+<Note>
+  **Roz Cloud is coming soon.** The managed platform is under active development. For now, use [Local Mode](/roz/deployment/local-mode) for single-machine development or [Self-Hosting](/roz/deployment/self-hosting) to run on your own infrastructure.
+</Note>
+
+## What Roz Cloud Will Provide
+
+Roz Cloud is a managed deployment of the roz stack. You get the same open-source runtime with hosted infrastructure and additional features for teams and production fleets.
+
+- **Managed infrastructure** — Postgres, NATS, and the roz server are fully managed. No database administration, no JetStream tuning, no server provisioning.
+- **Provider gateway** — Route LLM requests through a single endpoint. Bring your own API keys or use pooled access. Automatic fallback between providers when one is unavailable.
+- **Team management** — Invite collaborators, manage roles, and scope API keys to specific robots or environments. Tenant isolation is enforced at the database layer via RLS.
+- **Fleet monitoring** — Real-time dashboard for all connected robots. View agent sessions, WASM controller deployments, safety events, and heartbeat status across your fleet.
+- **Session history** — Persistent logs of every agent turn, tool call, and controller deployment. Replay sessions for debugging or compliance.
+
+## Authentication
+
+When Roz Cloud is available, you will authenticate via the CLI:
+
+```bash
+roz auth login
+```
+
+This opens a browser-based login flow. After authentication, the CLI stores a session token locally and uses it for all API and gRPC requests. No manual API key management is required for interactive use.
+
+For programmatic access (CI/CD, scripts, headless environments), you will create API keys through the dashboard:
+
+```bash
+# Set the API key for non-interactive use
+export ROZ_API_KEY="roz_sk_..."
+```
+
+## gRPC Session Flow
+
+Roz Cloud exposes the same gRPC interface as the self-hosted server. The session protocol:
+
+1. **`StartSession`** — Open a session. The server responds with `SessionStarted` containing the session ID and available capabilities.
+2. **`UserMessage`** — Send a natural language message. The server streams back `TextDelta` chunks as the agent reasons, followed by `TurnComplete` when the turn is finished.
+3. **`RegisterTools`** — Register additional MCP tools mid-session. The agent can then call these tools during subsequent turns.
+
+gRPC is multiplexed on the same port as REST (HTTPS on port 443). Requests are routed by `Content-Type: application/grpc`.
+
+## Pricing
+
+Pricing details will be announced when Roz Cloud launches. The open-source runtime is and will remain free under the Apache-2.0 license.
+
+## Stay Updated
+
+Watch the repository at [github.com/BedrockDynamics/roz-oss](https://github.com/BedrockDynamics/roz-oss) for release announcements, or sign up at [bedrockdynamics.studio](https://bedrockdynamics.studio) for early access.

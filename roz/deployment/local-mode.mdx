@@ -1,6 +1,109 @@
 ---
 title: "Local Mode"
-description: "Coming soon."
+description: "Run the full roz stack in a single process with no server, no database, and no network dependencies."
 ---
 
-Content coming soon.
+Local mode is the fastest way to use roz. Everything runs in-process on your machine — the CLI, agent runtime, Copper control loop, and sim container. No server, no database, no NATS. You bring your own LLM API key (or use Ollama for fully offline operation), and roz handles the rest.
+
+## How It Works
+
+The local mode data flow is a single pipeline with no network hops between components:
+
+```
+roz-cli → roz-local → roz-agent → roz-copper → Docker sim
+```
+
+- **roz-cli** accepts your natural language input and renders the TUI.
+- **roz-local** orchestrates the session in-process (no gRPC, no REST).
+- **roz-agent** runs the LLM reasoning loop, generates WASM controllers, and dispatches MCP tool calls.
+- **roz-copper** executes WASM controllers at 100Hz and manages the channel interface to the sim.
+- **Docker sim** runs Gazebo + the robot middleware stack in a container pulled from Docker Hub.
+
+## Configure Your LLM Provider
+
+roz is provider-agnostic. Set the API key for whichever provider you want to use.
+
+<Tabs>
+  <Tab title="Anthropic">
+    ```bash
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    ```
+  </Tab>
+  <Tab title="OpenAI">
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    ```
+  </Tab>
+  <Tab title="Google">
+    ```bash
+    export GOOGLE_API_KEY="AIza..."
+    ```
+  </Tab>
+  <Tab title="Ollama (Local)">
+    No API key needed. Start the Ollama server and pull a model:
+
+    ```bash
+    ollama serve &
+    ollama pull llama3.1:70b
+    ```
+
+    Ollama runs entirely on your machine — no internet connection required after the initial model download.
+  </Tab>
+</Tabs>
+
+## Select a Model
+
+Create a `roz.toml` in your project directory (or `~/.config/roz/roz.toml` for global config) to set the model:
+
+```toml
+[agent]
+provider = "anthropic"        # "anthropic", "openai", "google", or "ollama"
+model = "claude-sonnet-4-20250514"  # model name for the chosen provider
+
+[agent.ollama]
+url = "http://localhost:11434" # only needed for Ollama
+model = "llama3.1:70b"
+```
+
+If no `roz.toml` is present, roz defaults to Anthropic Claude Sonnet if `ANTHROPIC_API_KEY` is set, then falls back to OpenAI, Google, and finally Ollama in that order.
+
+## Pull a Sim Container
+
+All sim containers are published on Docker Hub under `bedrockdynamics/substrate-sim`. Pull the one for your robot:
+
+```bash
+# UR5 manipulator arm
+docker pull bedrockdynamics/substrate-sim:ros2-manipulator
+
+# PX4 quadcopter
+docker pull bedrockdynamics/substrate-sim:px4-gazebo-humble
+
+# ArduPilot quadcopter
+docker pull bedrockdynamics/substrate-sim:ardupilot-gazebo
+
+# Nav2 mobile robot
+docker pull bedrockdynamics/substrate-sim:ros2-nav2
+```
+
+Each container bundles Gazebo, the robot's middleware stack, and an MCP server. No ROS 2 or Gazebo installation is required on your host machine.
+
+## Start a Session
+
+Launch the simulation and start an interactive session:
+
+```bash
+roz sim start manipulator
+roz
+```
+
+The CLI connects to the running sim container, discovers the available MCP tools and WASM channels, and presents a prompt. Type natural language commands and the agent handles the rest.
+
+## When to Use Local Mode
+
+Local mode is ideal for:
+
+- **Development and experimentation** — fast iteration with no infrastructure to manage.
+- **Offline operation** — pair with Ollama for fully air-gapped environments.
+- **Single-robot sessions** — one operator, one robot, one machine.
+
+For multi-user access, persistent session history, or fleet management, see [Self-Hosting](/roz/deployment/self-hosting) or [Roz Cloud](/roz/deployment/cloud). For deploying the agent to robot hardware, see [Edge Deployment](/roz/deployment/edge).

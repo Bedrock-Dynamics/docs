@@ -1,6 +1,167 @@
 ---
 title: "Self-Hosting"
-description: "Coming soon."
+description: "Deploy the roz server on your own infrastructure with Postgres, NATS, and Docker Compose."
 ---
 
-Content coming soon.
+Self-hosting gives you the full roz server — REST API, gRPC sessions, persistent storage, and multi-user access — running on your own infrastructure. This guide covers the minimal setup with Docker Compose and the manual steps if you prefer to run each component separately.
+
+## Prerequisites
+
+- **Docker** and **Docker Compose** v2+
+- **Rust 1.92+** (only if building from source outside Docker)
+- A configured LLM provider API key (see [Local Mode](/roz/deployment/local-mode) for options)
+
+## Docker Compose
+
+The fastest way to self-host is with Docker Compose. This starts the roz server, Postgres 16, and NATS with JetStream in a single stack.
+
+```yaml
+# docker-compose.yml
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: roz
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: roz
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--signal", "ldm"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  roz-server:
+    image: bedrockdynamics/roz-server:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://roz:changeme@postgres:5432/roz
+      NATS_URL: nats://nats:4222
+      ROZ_API_URL: http://localhost:8080
+      RUST_LOG: info,roz_server=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  natsdata:
+```
+
+Start the stack:
+
+```bash
+docker compose up -d
+```
+
+## Database Setup
+
+If you are running Postgres outside Docker (or need to run migrations manually), use sqlx:
+
+```bash
+export DATABASE_URL="postgres://roz:changeme@localhost:5432/roz"
+sqlx migrate run --source migrations/
+```
+
+Migrations are in the [`migrations/`](https://github.com/BedrockDynamics/roz-oss/tree/main/migrations) directory. Every table has Row Level Security (RLS) enabled — tenant isolation is enforced at the database layer.
+
+## Create Your First API Key
+
+After the server is running and migrations are applied, create an API key. You can do this with SQL:
+
+```sql
+-- Connect to the roz database
+INSERT INTO api_keys (tenant_id, key_hash, key_prefix, name)
+VALUES (
+  '<your-tenant-id>',
+  encode(sha256(decode('your-random-secret', 'escape')), 'hex'),
+  'roz_sk_xxxx',
+  'dev-key'
+);
+```
+
+Or use the CLI:
+
+```bash
+roz admin create-api-key --name "dev-key"
+```
+
+API keys use the scheme `roz_sk_<random>` and are passed as `Authorization: Bearer <key>`. Keys do not expire by default — they remain valid until explicitly revoked.
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | Yes | — | Postgres connection string |
+| `NATS_URL` | Yes | — | NATS server URL |
+| `ROZ_API_URL` | No | `http://localhost:8080` | Public-facing URL for the API |
+| `RUST_LOG` | No | `info` | Log level filter |
+| `PORT` | No | `8080` | HTTP/gRPC listen port |
+
+## Health Check
+
+Verify the server is running:
+
+```bash
+curl http://localhost:8080/health
+```
+
+A healthy response returns HTTP 200. The `/health` endpoint does not require authentication.
+
+## gRPC
+
+REST and gRPC are multiplexed on the same port. The server routes requests by `Content-Type` header — requests with `application/grpc` go to the tonic gRPC handler, everything else goes to the axum REST router.
+
+gRPC requires HTTP/2. If you are running behind a reverse proxy, make sure it supports HTTP/2 end-to-end.
+
+gRPC reflection is enabled. You can inspect available services with `grpcurl`:
+
+```bash
+grpcurl -plaintext localhost:8080 list
+```
+
+The gRPC session protocol follows this flow:
+
+1. `StartSession` — server responds with `SessionStarted`
+2. `UserMessage` — server streams `TextDelta` chunks, ends with `TurnComplete`
+3. `RegisterTools` — register MCP tools mid-session
+
+## Building from Source
+
+If you prefer to build the server binary directly:
+
+```bash
+git clone https://github.com/BedrockDynamics/roz-oss.git
+cd roz-oss
+cargo build --release -p roz-server
+```
+
+The binary is at `target/release/roz-server`. Run it with the environment variables above.
+
+## Next Steps
+
+- [Edge Deployment](/roz/deployment/edge) — deploy the worker binary to robot hardware.
+- [Roz Cloud](/roz/deployment/cloud) — managed hosting (coming soon).
+- [API Reference](/roz/reference/rest-api) — full REST API documentation.

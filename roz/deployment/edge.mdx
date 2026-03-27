@@ -1,6 +1,184 @@
 ---
 title: "Edge Deployment"
-description: "Coming soon."
+description: "Deploy the roz worker and safety daemon to robot hardware for real-time control at 100Hz."
 ---
 
-Content coming soon.
+Edge deployment puts the roz runtime directly on the robot. The `roz-worker` binary runs on the robot's onboard computer (Jetson, Raspberry Pi, or any Linux ARM/x86 system), connects to a roz server over NATS for task dispatch, and executes WASM controllers locally at 100Hz through the Copper runtime. A separate `roz-safety` daemon monitors heartbeats and enforces emergency stop.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│  Robot Hardware (Jetson / Pi / x86)             │
+│                                                 │
+│  ┌─────────────┐  ┌──────────────┐              │
+│  │ roz-worker   │  │ roz-safety   │              │
+│  │              │  │              │              │
+│  │ Agent loop   │  │ Heartbeat    │              │
+│  │ WASM sandbox │  │ monitoring   │              │
+│  │ Copper 100Hz │  │ E-stop       │              │
+│  └──────┬───────┘  └──────┬───────┘              │
+│         │                 │                      │
+│         └────── HAL ──────┘                      │
+│                  │                               │
+│            Actuators / Sensors                   │
+└─────────────────┬───────────────────────────────┘
+                  │ NATS
+                  ▼
+          ┌──────────────┐
+          │  roz-server   │
+          │  (cloud/LAN)  │
+          └──────────────┘
+```
+
+## roz-worker
+
+The worker binary is the edge runtime. It connects to a roz server over NATS, receives task assignments, runs the agent reasoning loop locally, and executes WASM controllers through the Copper runtime.
+
+### Installation
+
+Build from source for your target architecture:
+
+```bash
+git clone https://github.com/BedrockDynamics/roz-oss.git
+cd roz-oss
+
+# Native build (on the robot itself)
+cargo build --release -p roz-worker
+
+# Cross-compile for aarch64 (Jetson, Pi)
+cargo build --release -p roz-worker --target aarch64-unknown-linux-gnu
+```
+
+The binary is at `target/release/roz-worker` (or `target/aarch64-unknown-linux-gnu/release/roz-worker`).
+
+### Configuration
+
+Configure the worker with environment variables or `roz.toml`:
+
+```toml
+[worker]
+server_nats_url = "nats://your-server:4222"
+robot_id = "ur5-lab-01"
+
+[agent]
+provider = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[agent.ollama]
+url = "http://localhost:11434"
+model = "llama3.1:70b"
+
+[copper]
+frequency_hz = 100
+```
+
+### Running
+
+```bash
+export NATS_URL="nats://your-server:4222"
+export ANTHROPIC_API_KEY="sk-ant-..."
+./roz-worker
+```
+
+The worker registers itself with the server, reports its capabilities (available MCP tools, WASM channels), and waits for task assignments.
+
+## Copper Runtime
+
+The Copper runtime drives the control loop at 100Hz. Each cycle:
+
+1. **Read** sensor state from the hardware abstraction layer.
+2. **Execute** the active WASM controller in the wasmtime sandbox.
+3. **Write** motor commands through the channel interface.
+4. **Enforce** safety limits (velocity, acceleration, position clamps).
+
+Copper is deterministic and lock-free. The 100Hz loop runs on a dedicated thread with real-time scheduling priority when available.
+
+## roz-safety Daemon
+
+The safety daemon runs as a **separate process** from the worker. This isolation ensures that if the worker crashes, hangs, or enters an unexpected state, the safety system remains operational.
+
+### What It Does
+
+- **Heartbeat monitoring** — The worker sends heartbeats to the safety daemon at a configurable interval. If heartbeats stop (worker crash, network partition, deadlock), the safety daemon triggers an emergency stop.
+- **E-stop enforcement** — On any safety event (missed heartbeat, limit violation, external e-stop signal), the daemon immediately commands all actuators to a safe state: zero velocity, brakes engaged, controllers halted.
+- **Independent watchdog** — The daemon monitors system health metrics (CPU temperature, memory pressure, actuator faults) and can trigger protective shutdown independently of the agent.
+
+### Running
+
+```bash
+./roz-safety --worker-heartbeat-timeout 500ms
+```
+
+The safety daemon and worker communicate over a local socket. Always start `roz-safety` before `roz-worker`.
+
+## Crash Recovery
+
+The worker uses write-ahead log (WAL) persistence to survive crashes and power cycles:
+
+- **Session state** is journaled to disk. On restart, the worker resumes the active session from the last checkpoint rather than starting from scratch.
+- **Controller state** is persisted. If a WASM controller was active at the time of the crash, the worker reloads it and resumes execution.
+- **NATS reconnection** is automatic. The worker reconnects to the server and re-registers itself without manual intervention.
+
+## Network Resilience
+
+Edge robots operate in environments where network connectivity is intermittent or unavailable. The worker handles disconnection gracefully:
+
+- **Ollama fallback** — If the network drops and the configured cloud LLM provider (Anthropic, OpenAI, Google) becomes unreachable, the worker falls back to a local Ollama instance for agent reasoning. Configure the fallback model in `roz.toml`:
+
+```toml
+[agent.fallback]
+provider = "ollama"
+model = "llama3.1:70b"
+```
+
+- **Autonomous operation** — Active WASM controllers continue executing at 100Hz regardless of network state. The control loop is entirely local.
+- **Task queuing** — If the worker receives a task while disconnected from the LLM provider and no local fallback is available, the task is queued and executed when connectivity is restored.
+
+## Systemd Service
+
+For production deployments, run both the worker and safety daemon as systemd services:
+
+```ini
+# /etc/systemd/system/roz-safety.service
+[Unit]
+Description=roz safety daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/roz-safety --worker-heartbeat-timeout 500ms
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```ini
+# /etc/systemd/system/roz-worker.service
+[Unit]
+Description=roz edge worker
+After=network.target roz-safety.service
+Requires=roz-safety.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/roz/env
+ExecStart=/usr/local/bin/roz-worker
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now roz-safety roz-worker
+```
+
+## Next Steps
+
+- [Safety Architecture](/roz/concepts/safety-architecture) — details on the tiered safety system.
+- [WASM Controllers](/roz/concepts/wasm-controllers) — how the agent generates and deploys real-time control code.
+- [Self-Hosting](/roz/deployment/self-hosting) — set up the server that the worker connects to.
