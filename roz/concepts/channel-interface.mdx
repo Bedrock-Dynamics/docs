@@ -1,6 +1,195 @@
 ---
 title: "Channel Interface"
-description: "Coming soon."
+description: "A robot-agnostic abstraction layer between WASM controllers and physical actuators. Write one controller, run it on any supported robot."
 ---
 
-Content coming soon.
+The channel interface is how WASM controllers interact with robot hardware. Instead of robot-specific APIs (`set_joint_velocity`, `set_thrust`), controllers read and write through numbered channels that are defined by the robot's manifest. The same controller pattern works across manipulators, drones, and mobile robots.
+
+This follows the `ros2_control` / MuJoCo / Drake pattern: named, typed, bounded channels with discovery.
+
+## How It Works
+
+```
+   WASM Controller                Channel Interface              Robot
+  ┌──────────────┐            ┌─────────────────────┐        ┌──────────┐
+  │ process(tick) │            │  Command Channels    │        │          │
+  │               │──set(i,v)─▶│  [0] velocity  ±π   │──────▶│ Joint 0  │
+  │               │──set(i,v)─▶│  [1] velocity  ±π   │──────▶│ Joint 1  │
+  │               │            │  ...                 │        │  ...     │
+  │               │            │                      │        │          │
+  │               │◀─get(i)───│  State Channels      │◀──────│          │
+  │               │◀─get(i)───│  [0] position  ±2π   │◀──────│ Encoder  │
+  │               │            │  [1] position  ±2π   │◀──────│ Encoder  │
+  └──────────────┘            └─────────────────────┘        └──────────┘
+```
+
+**Command channels** are written by the controller each tick. They carry velocity, position, or effort values to actuators.
+
+**State channels** are read by the controller each tick. They carry position, velocity, or effort feedback from sensors.
+
+## ChannelManifest
+
+Every robot is described by a `ChannelManifest` that lists its command and state channels, along with safety limits and metadata.
+
+```rust
+pub struct ChannelManifest {
+    pub robot_id: String,          // "ur5", "quadcopter", "diff_drive"
+    pub robot_class: String,       // "manipulator", "drone", "mobile"
+    pub control_rate_hz: u32,      // 100
+    pub commands: Vec<ChannelDescriptor>,
+    pub states: Vec<ChannelDescriptor>,
+}
+```
+
+## ChannelDescriptor
+
+Each channel has a name, type, unit, limits, default value, and optional rate-of-change cap.
+
+```rust
+pub struct ChannelDescriptor {
+    pub name: String,                       // "shoulder_pan_joint/velocity"
+    pub interface_type: InterfaceType,      // Position, Velocity, or Effort
+    pub unit: String,                       // "rad/s", "m/s", "Nm"
+    pub limits: (f64, f64),                 // (min, max)
+    pub default: f64,                       // safe default (usually 0.0)
+    pub max_rate_of_change: Option<f64>,    // acceleration limit per tick
+    pub position_state_index: Option<usize>,// paired position state channel
+}
+```
+
+The `InterfaceType` enum determines what kind of value a channel carries:
+
+| Type | Description | Typical unit |
+|------|-------------|-------------|
+| `Position` | Angular or linear position | rad, m |
+| `Velocity` | Angular or linear velocity | rad/s, m/s |
+| `Effort` | Torque or force | Nm, N |
+
+## WASM Host Functions
+
+Controllers access channels through these host functions, imported from the `command` and `state` modules:
+
+| Module | Function | Signature | Description |
+|--------|----------|-----------|-------------|
+| `command` | `set` | `(i32, f64) -> i32` | Write a value to command channel `i` |
+| `command` | `count` | `() -> i32` | Number of command channels |
+| `command` | `limit_min` | `(i32) -> f64` | Minimum allowed value for channel `i` |
+| `command` | `limit_max` | `(i32) -> f64` | Maximum allowed value for channel `i` |
+| `state` | `get` | `(i32) -> f64` | Read the current value of state channel `i` |
+| `state` | `count` | `() -> i32` | Number of state channels |
+
+<Note>
+  `command::set` returns `0` on success and `1` if the value was clamped to the channel's limits. The safety filter applies additional clamping downstream.
+</Note>
+
+## Built-in Manifests
+
+roz includes factory methods for common robot types:
+
+<Tabs>
+  <Tab title="UR5 Manipulator">
+    `ChannelManifest::ur5()` -- 6-DOF arm
+
+    **6 command channels** (velocity):
+    | Index | Name | Limits | Unit |
+    |-------|------|--------|------|
+    | 0 | `shoulder_pan_joint/velocity` | +/-3.14 | rad/s |
+    | 1 | `shoulder_lift_joint/velocity` | +/-3.14 | rad/s |
+    | 2 | `elbow_joint/velocity` | +/-3.14 | rad/s |
+    | 3 | `wrist_1_joint/velocity` | +/-3.14 | rad/s |
+    | 4 | `wrist_2_joint/velocity` | +/-3.14 | rad/s |
+    | 5 | `wrist_3_joint/velocity` | +/-3.14 | rad/s |
+
+    **12 state channels** (6 position + 6 velocity):
+    | Index | Name | Type | Unit |
+    |-------|------|------|------|
+    | 0-5 | `{joint}/position` | Position | rad |
+    | 6-11 | `{joint}/velocity` | Velocity | rad/s |
+
+    Each command channel has `max_rate_of_change: 0.5` (50 rad/s^2 at 100 Hz) and a `position_state_index` pairing it with its corresponding position state channel for position limit enforcement.
+  </Tab>
+  <Tab title="Quadcopter">
+    `ChannelManifest::quadcopter()` -- body velocity control
+
+    **4 command channels:**
+    | Index | Name | Limits | Unit |
+    |-------|------|--------|------|
+    | 0 | `body/velocity.x` | +/-5.0 | m/s |
+    | 1 | `body/velocity.y` | +/-5.0 | m/s |
+    | 2 | `body/velocity.z` | +/-3.0 | m/s |
+    | 3 | `body/yaw_rate` | +/-1.57 | rad/s |
+
+    **4 state channels:**
+    | Index | Name | Type | Unit |
+    |-------|------|------|------|
+    | 0 | `body/position.x` | Position | m |
+    | 1 | `body/position.y` | Position | m |
+    | 2 | `body/position.z` | Position | m |
+    | 3 | `body/yaw` | Position | rad |
+  </Tab>
+  <Tab title="Differential Drive">
+    `ChannelManifest::diff_drive()` -- twist control
+
+    **2 command channels:**
+    | Index | Name | Limits | Unit |
+    |-------|------|--------|------|
+    | 0 | `base/linear.x` | +/-1.0 | m/s |
+    | 1 | `base/angular.z` | +/-2.0 | rad/s |
+
+    **3 state channels:**
+    | Index | Name | Type | Unit |
+    |-------|------|------|------|
+    | 0 | `base/odom.x` | Position | m |
+    | 1 | `base/odom.y` | Position | m |
+    | 2 | `base/odom.yaw` | Position | rad |
+  </Tab>
+  <Tab title="Generic">
+    `ChannelManifest::generic_velocity(n, max_vel)` -- N joints with symmetric velocity limits and no state channels. Useful for testing or robots where only the joint count and velocity limit are known.
+  </Tab>
+</Tabs>
+
+## Custom Manifests with robot.toml
+
+For robots not covered by the built-in factories, define a custom manifest in `robot.toml`:
+
+```toml
+[manifest]
+robot_id = "my_arm"
+robot_class = "manipulator"
+control_rate_hz = 100
+
+[[manifest.commands]]
+name = "joint0/velocity"
+interface_type = "velocity"
+unit = "rad/s"
+limits = [-2.0, 2.0]
+default = 0.0
+max_rate_of_change = 0.3
+
+[[manifest.commands]]
+name = "joint1/velocity"
+interface_type = "velocity"
+unit = "rad/s"
+limits = [-2.0, 2.0]
+default = 0.0
+max_rate_of_change = 0.3
+
+[[manifest.states]]
+name = "joint0/position"
+interface_type = "position"
+unit = "rad"
+limits = [-3.14, 3.14]
+default = 0.0
+
+[[manifest.states]]
+name = "joint1/position"
+interface_type = "position"
+unit = "rad"
+limits = [-3.14, 3.14]
+default = 0.0
+```
+
+## Source
+
+- Channel types: [`roz-core/src/channels.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-core/src/channels.rs)
+- Host function bindings: [`roz-copper/src/wit_host.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-copper/src/wit_host.rs)

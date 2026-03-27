@@ -1,6 +1,148 @@
 ---
 title: "WASM Controllers"
-description: "Coming soon."
+description: "The agent writes WAT code that runs at 100Hz in a wasmtime sandbox. Controllers read sensors, write motor commands, and are verified before deployment."
 ---
 
-Content coming soon.
+When a task requires continuous, closed-loop control, the agent writes a WASM controller. The controller is a small program that runs at 100 Hz inside a [wasmtime](https://wasmtime.dev/) sandbox, reading sensor state and writing motor commands through the [channel interface](/roz/concepts/channel-interface).
+
+The agent writes the code in WAT (WebAssembly Text format), which is human-readable and easy for LLMs to generate. The `deploy_controller` tool compiles, verifies, and deploys the controller -- all in one step.
+
+## Required Export
+
+Every controller must export a `process` function that takes a tick counter:
+
+```wat
+(func (export "process") (param i64))
+```
+
+This function is called once per tick (every 10 ms at 100 Hz). The `i64` parameter is a monotonically increasing tick counter starting from 0.
+
+## Host Function Table
+
+Controllers import host functions to interact with the robot. These are the available imports:
+
+| Module | Function | Signature | Description |
+|--------|----------|-----------|-------------|
+| `command` | `set` | `(i32, f64) -> i32` | Write a value to command channel |
+| `command` | `count` | `() -> i32` | Number of command channels |
+| `command` | `limit_min` | `(i32) -> f64` | Min limit for channel |
+| `command` | `limit_max` | `(i32) -> f64` | Max limit for channel |
+| `state` | `get` | `(i32) -> f64` | Read a state channel |
+| `state` | `count` | `() -> i32` | Number of state channels |
+| `math` | `sin` | `(f64) -> f64` | Sine (WASM has no trig intrinsics) |
+| `math` | `cos` | `(f64) -> f64` | Cosine |
+| `timing` | `now_ns` | `() -> i64` | Wall-clock nanoseconds since epoch |
+| `timing` | `sim_time_ns` | `() -> i64` | Simulation time in nanoseconds |
+
+<Note>
+  `timing::sim_time_ns` respects pause and speed scaling in simulation, while `timing::now_ns` returns real wall-clock time. Use `sim_time_ns` for time-based trajectories.
+</Note>
+
+## Example: Constant Velocity
+
+A minimal controller that sets all joints to a constant velocity:
+
+```wat
+(module
+  (import "command" "set" (func $set (param i32 f64) (result i32)))
+  (import "command" "count" (func $count (result i32)))
+
+  (func (export "process") (param $tick i64)
+    (local $i i32)
+    (local.set $i (i32.const 0))
+    (block $break
+      (loop $loop
+        (br_if $break (i32.ge_s (local.get $i) (call $count)))
+        (drop (call $set (local.get $i) (f64.const 0.5)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)
+      )
+    )
+  )
+)
+```
+
+## Example: Sine Wave Oscillation
+
+A controller that oscillates joint 0 with a sine wave using simulation time:
+
+```wat
+(module
+  (import "command" "set" (func $set (param i32 f64) (result i32)))
+  (import "math" "sin" (func $sin (param f64) (result f64)))
+  (import "timing" "sim_time_ns" (func $sim_time (result i64)))
+
+  (func (export "process") (param $tick i64)
+    (local $t f64)
+    ;; Convert sim time from nanoseconds to seconds
+    (local.set $t
+      (f64.div
+        (f64.convert_i64_s (call $sim_time))
+        (f64.const 1e9)
+      )
+    )
+    ;; joint 0 = sin(2pi * 0.5Hz * t) rad/s
+    (drop
+      (call $set
+        (i32.const 0)
+        (call $sin
+          (f64.mul
+            (f64.const 3.14159265358979)  ;; pi * frequency
+            (local.get $t)
+          )
+        )
+      )
+    )
+  )
+)
+```
+
+## Deploy Lifecycle
+
+When the agent calls `deploy_controller`, the code goes through a multi-step pipeline before reaching the robot:
+
+<Steps>
+  <Step title="Compile">
+    WAT source is compiled to WASM bytecode using wasmtime. Compilation errors are returned to the agent immediately.
+  </Step>
+  <Step title="Link host functions">
+    The WASM module's imports are resolved against the host function table. Missing or mismatched imports cause a link error.
+  </Step>
+  <Step title="Verify (100 ticks)">
+    The compiled module runs for 100 ticks under production safety limits. The safety filter checks every command value against the channel manifest's limits. If any tick produces a safety violation (value exceeds limits, NaN output, or a WASM trap), the controller is rejected.
+  </Step>
+  <Step title="Deploy to Copper">
+    The verified WASM binary is sent to the running Copper control loop via an internal channel. The new controller replaces the previous one atomically. There is no gap in control -- the old controller runs until the new one is ready.
+  </Step>
+</Steps>
+
+## Epoch-Based Interruption
+
+Each `process(tick)` call has an **8 ms budget**. If the controller does not return within 8 ms, wasmtime's epoch interruption mechanism traps the execution.
+
+This prevents infinite loops or excessively complex computations from blocking the 100 Hz control loop. The 8 ms budget leaves 2 ms of headroom within the 10 ms tick period for safety filtering, actuator communication, and sensor reads.
+
+```
+  |--- 10 ms tick period ---|
+  |-- 8 ms WASM budget --|-- 2 ms overhead --|
+```
+
+## What Happens on Rejection
+
+If verification fails, the `deploy_controller` tool returns an error message describing what went wrong. The agent can then fix the code and try again. Common rejection reasons:
+
+- **Compilation error** -- invalid WAT syntax or unsupported WASM features
+- **Link error** -- importing a host function that does not exist or with the wrong signature
+- **Safety violation** -- a command value exceeded the channel's configured limits during the 100-tick verification
+- **NaN output** -- a command channel received a NaN or infinite value (mapped to zero by the safety filter, but flagged as a rejection)
+- **WASM trap** -- the module hit an unreachable instruction, divided by zero, or exceeded the epoch deadline
+
+<Warning>
+  Controllers run in a memory-isolated wasmtime sandbox with a 16 MiB memory cap. They cannot access the filesystem, network, or any host state beyond the channel interface. The `unsafe` keyword is denied workspace-wide in roz.
+</Warning>
+
+## Source
+
+- Deploy tool: [`roz-local/src/tools/deploy_controller.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-local/src/tools/deploy_controller.rs)
+- WASM runtime: [`roz-copper/src/wasm.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-copper/src/wasm.rs)
+- Host functions: [`roz-copper/src/wit_host.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-copper/src/wit_host.rs)

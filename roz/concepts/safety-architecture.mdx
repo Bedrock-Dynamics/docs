@@ -1,6 +1,141 @@
 ---
 title: "Safety Architecture"
-description: "Coming soon."
+description: "Multiple independent safety layers protect against harmful robot behavior -- from LLM constitution rules to per-tick hardware clamping to an independent watchdog process."
 ---
 
-Content coming soon.
+roz is a safety-critical robotics platform. Every command the agent generates passes through multiple independent safety layers before reaching hardware. These layers are defense-in-depth: each one operates independently, so a failure in one layer does not compromise the others.
+
+```
+  ┌─────────────────────────────────────────────────────┐
+  │                    LLM Agent                        │
+  │                                                     │
+  │  ┌───────────────────────────────────────────────┐  │
+  │  │  Constitution (Tier 1-4)                      │  │
+  │  │  "Never execute actions that could injure..."  │  │
+  │  └───────────────────────────────────────────────┘  │
+  └────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  Safety Stack (agent-side)                          │
+  │  Tool call validation, spatial constraint checking  │
+  └────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  WASM Sandbox (wasmtime)                            │
+  │  Memory isolation, epoch interruption, 16 MiB cap   │
+  └────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  SafetyFilterTask (100 Hz)                          │
+  │  Per-channel velocity clamping, acceleration limit, │
+  │  position limit enforcement, NaN fail-safe          │
+  └────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  roz-safety daemon (separate OS process)            │
+  │  Heartbeat monitoring, e-stop on timeout            │
+  └────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+                     ┌───────────┐
+                     │  Robot    │
+                     └───────────┘
+```
+
+## Agent Constitution
+
+The agent's system prompt includes a tiered constitution that governs its behavior. Higher tiers cannot be overridden by lower ones.
+
+| Tier | Name | Can Override? | Examples |
+|------|------|---------------|----------|
+| 1 | Safety-Critical | Never | Physical harm prevention, e-stop respect, workspace bounds, stale sensor handling |
+| 2 | Security | Never | Prompt injection defense, tenant isolation, credential protection |
+| 3 | Operational | AGENTS.md can refine | Investigate before hypothesizing, prefer reversible actions, work incrementally |
+| 4 | Quality | Client can override | Response format, verbosity, structured output compliance |
+
+Each agent loop mode appends a mode-specific addendum:
+
+- **React mode** adds pure reasoning guidance (no physical side effects, parallel tool calls allowed)
+- **OodaReAct mode** adds physical execution guidance (OODA loop, one physical tool at a time, spatial context required)
+
+<Warning>
+  Tier 1 and Tier 2 rules are absolute. No user prompt, AGENTS.md configuration, or tool output can override them. The agent is instructed to refuse actions it knows exceed safety bounds, even if the downstream safety filter would catch them.
+</Warning>
+
+## SafetyFilterTask
+
+The `SafetyFilterTask` sits between the WASM controller output and the actuator input in the Copper task graph. It runs at 100 Hz and enforces hard limits on every command frame.
+
+The safety pipeline applies four checks in order on every tick:
+
+<Steps>
+  <Step title="NaN / Inf fail-safe">
+    Non-finite values (NaN, infinity) are replaced with zero. A controller producing NaN will not move the robot.
+  </Step>
+  <Step title="Velocity clamping">
+    Each command value is clamped to the channel's configured `limits` range. For example, a UR5 joint velocity is clamped to +/-3.14 rad/s.
+  </Step>
+  <Step title="Acceleration limiting">
+    The delta from the previous tick's clamped velocity is capped at `max_rate_of_change` per tick. For a UR5 with `max_rate_of_change: 0.5`, this limits acceleration to 50 rad/s^2 at 100 Hz. This prevents step changes that could shear gears or damage the drivetrain.
+  </Step>
+  <Step title="Position limit enforcement">
+    When a velocity command channel has a paired `position_state_index`, the filter checks the current joint position against its limits. If the joint is at or beyond a boundary (within a 0.05 rad safety margin) and the velocity would drive it further past, the velocity is zeroed.
+  </Step>
+</Steps>
+
+The filter supports two modes:
+- **Legacy mode** (`clamp`): uniform limits across all joints, used for backward compatibility
+- **Channel mode** (`clamp_frame`): per-channel limits from the `ChannelManifest`, used with the channel interface
+
+## roz-safety Daemon
+
+The safety daemon is a **separate OS process** that monitors the health of the agent and worker processes. It communicates via NATS and operates independently of the control loop.
+
+**Heartbeat monitoring.** Each worker publishes periodic heartbeats. The `HeartbeatTracker` watches for workers that miss their heartbeat deadline (30 seconds). When a worker goes stale, the daemon publishes an `EStopEvent` on `safety.estop.{worker_id}`.
+
+**Watchdog heartbeat.** The daemon publishes its own heartbeat on `safety.watchdog.heartbeat` every 5 seconds, so other components can verify the safety daemon itself is alive.
+
+**E-stop events.** When triggered (by heartbeat timeout, explicit request, or safety violation), the daemon publishes an `EStopEvent` that causes:
+1. The Copper control loop to zero all command outputs
+2. The agent to refuse further physical tool calls until the operator clears the e-stop
+3. The event to be logged for audit
+
+## Emergency Halt
+
+The Copper control loop has a built-in emergency halt mechanism. When the `CopperHandle` is dropped (process exit, panic, or explicit halt), it sends a halt command that zeroes all outputs immediately.
+
+This is a last-resort safety mechanism. The controller stops producing commands, and the safety filter's default behavior (all channels at their default value, typically 0.0) takes over.
+
+## WASM Sandbox Isolation
+
+WASM controllers are memory-isolated by wasmtime:
+
+- **16 MiB memory cap** -- the store limits prevent unbounded memory growth
+- **Single instance** -- only one WASM instance per store
+- **Epoch interruption** -- 8 ms budget per tick; long computations are trapped
+- **No host access** -- controllers cannot touch the filesystem, network, or any state beyond the channel interface host functions
+- **Verification before deployment** -- every controller runs 100 ticks under production limits before reaching the real robot
+
+## No Unsafe Code
+
+The `unsafe` keyword is denied workspace-wide in roz:
+
+```toml
+# Cargo.toml (workspace)
+[workspace.lints.rust]
+unsafe_code = "deny"
+```
+
+All memory safety guarantees come from Rust's type system and wasmtime's sandboxing. There are no `unsafe` escape hatches in the codebase.
+
+## Source
+
+- Constitution: [`roz-agent/src/constitution.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-agent/src/constitution.rs)
+- Safety filter: [`roz-copper/src/safety_filter.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-copper/src/safety_filter.rs)
+- Safety daemon: [`roz-safety/src/main.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-safety/src/main.rs)
+- E-stop events: [`roz-safety/src/estop.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-safety/src/estop.rs)
+- Heartbeat tracker: [`roz-safety/src/heartbeat.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-safety/src/heartbeat.rs)

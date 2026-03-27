@@ -1,6 +1,122 @@
 ---
 title: "Two Control Paths"
-description: "Coming soon."
+description: "roz gives the agent two ways to control a robot: high-level MCP tools for discrete actions and WASM controllers for continuous 100Hz control."
 ---
 
-Content coming soon.
+roz provides two complementary control paths. The agent chooses which path to use based on the task, and can combine both in the same session.
+
+```
+                          ┌─────────────────────┐
+                          │     LLM Agent        │
+                          │  (Claude, GPT-4, …)  │
+                          └──────┬──────┬────────┘
+                                 │      │
+                   ┌─────────────┘      └──────────────┐
+                   │                                    │
+          Path A: MCP Tools                   Path B: WASM Controllers
+              (1-3 Hz)                             (100 Hz)
+                   │                                    │
+                   ▼                                    ▼
+        ┌──────────────────┐               ┌────────────────────┐
+        │  MCP Server      │               │  wasmtime Sandbox  │
+        │  (in sim Docker) │               │  process(tick)     │
+        │                  │               │                    │
+        │  move_to_pose()  │               │  state::get(i)     │
+        │  takeoff()       │               │  command::set(i,v) │
+        │  navigate_to()   │               │                    │
+        └──────────────────┘               └────────────────────┘
+                   │                                    │
+                   ▼                                    ▼
+        ┌──────────────────┐               ┌────────────────────┐
+        │  Robot Middleware │               │   Safety Filter    │
+        │  (MoveIt2, PX4,  │               │   (per-channel     │
+        │   Nav2, …)       │               │    clamping)       │
+        └──────────────────┘               └────────────────────┘
+                   │                                    │
+                   └──────────────┬─────────────────────┘
+                                  ▼
+                         ┌─────────────────┐
+                         │  Robot / Sim     │
+                         └─────────────────┘
+```
+
+## Path A: MCP Tools
+
+The agent calls high-level tools through the [Model Context Protocol](https://modelcontextprotocol.io/). Each sim container bundles its own MCP server with robot-specific tools like `move_to_pose`, `get_joint_state`, `takeoff`, or `navigate_to`.
+
+MCP tools handle motion planning, collision checking, and middleware coordination internally. The agent says *what* to do, and the tool handles *how*.
+
+**Rate:** 1-3 Hz (one tool call per LLM turn).
+
+**Best for:**
+- Discrete actions (go to a waypoint, pick up an object, land)
+- Positioning and setup before a precision task
+- Tasks where the middleware's built-in planner is sufficient
+
+```
+Agent: "Move the arm to the packing position"
+  → move_to_pose(x: 0.3, y: 0.0, z: 0.4, ...)
+  → MoveIt2 plans and executes the trajectory
+  → Tool returns success + final joint state
+```
+
+## Path B: WASM Controllers
+
+The agent writes WAT (WebAssembly Text) code implementing a `process(tick)` function. The code is compiled to WASM, verified in a sandbox, and deployed to a 100 Hz [Copper](https://github.com/copper-project/copper-rs) control loop.
+
+Each tick, the controller reads sensor state and writes motor commands through the [channel interface](/roz/concepts/channel-interface). The agent has direct, continuous control over the robot's actuators.
+
+**Rate:** 100 Hz (10 ms per tick).
+
+**Best for:**
+- Continuous control (smooth trajectories, oscillation, impedance control)
+- Reactive behaviors that need fast sensor feedback
+- Custom motion patterns the middleware does not support
+
+```
+Agent: "Oscillate joint 0 with a sine wave at 0.5 Hz"
+  → Writes WAT code: process(tick) { command::set(0, sin(tick * 0.031)) }
+  → deploy_controller compiles, verifies 100 ticks, deploys
+  → Controller runs at 100 Hz until replaced or halted
+```
+
+## When to Use Which
+
+| | MCP Tools (Path A) | WASM Controllers (Path B) |
+|---|---|---|
+| **Control rate** | 1-3 Hz | 100 Hz |
+| **Agent writes** | Tool call parameters | WAT/WASM code |
+| **Motion planning** | Handled by middleware | Agent implements directly |
+| **Sensor feedback** | Snapshot per tool call | Every tick (10 ms) |
+| **Safety** | Middleware enforces limits | Safety filter clamps per tick |
+| **Use case** | Go-to-pose, pick-and-place | Trajectory tracking, force control |
+| **Latency** | Seconds (LLM round-trip) | 10 ms (WASM tick) |
+
+## Combining Both Paths
+
+The agent can use both paths in the same session. A typical pattern:
+
+<Steps>
+  <Step title="Position with MCP">
+    Use `move_to_pose` to move the arm to a starting configuration.
+  </Step>
+  <Step title="Deploy WASM controller">
+    Write and deploy a WAT controller for the precision task (e.g., a circular polishing motion).
+  </Step>
+  <Step title="Monitor and iterate">
+    Read sensor state via MCP tools to check progress. If the controller needs adjustment, deploy an updated version.
+  </Step>
+  <Step title="Halt and return">
+    Stop the controller and use MCP tools to move back to a safe home position.
+  </Step>
+</Steps>
+
+<Note>
+  Both control paths go through the [safety filter](/roz/concepts/safety-architecture) before reaching the robot. MCP tools are checked by the middleware's own safety layer. WASM commands are clamped per-channel by `SafetyFilterTask` at 100 Hz.
+</Note>
+
+## Source
+
+- Control path architecture: [`roz-local/src/runtime.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-local/src/runtime.rs)
+- MCP tool registration: [`roz-local/src/tools/`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-local/src/tools/)
+- WASM deployment: [`roz-local/src/tools/deploy_controller.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-local/src/tools/deploy_controller.rs)

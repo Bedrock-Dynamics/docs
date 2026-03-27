@@ -1,6 +1,162 @@
 ---
 title: "Agent Modes"
-description: "Coming soon."
+description: "roz agents operate in two modes: React for pure reasoning and OodaReAct for physical robot control. Modes determine what tools are available and how the agent processes each turn."
 ---
 
-Content coming soon.
+The agent runtime has two execution modes that determine how the agent processes each turn, what tools are available, and what safety checks apply. The mode is set per-session or per-phase.
+
+## React Mode
+
+`AgentLoopMode::React` is for pure reasoning tasks with no physical side effects.
+
+**Use cases:** planning, code generation, analysis, diagnostics, answering questions about the robot or environment.
+
+**Behavior:**
+- No spatial context is injected (no sensor data, no entity positions)
+- No WASM deployment (the `deploy_controller` tool is not available)
+- Pure tools (read-only, side-effect-free) can be called in parallel
+- The agent can plan physical operations but cannot execute them
+
+```
+  User message
+       │
+       ▼
+  ┌──────────┐     ┌───────────┐
+  │   LLM    │────▶│   Tools   │  (read-only, parallel)
+  │  (React) │◀────│           │
+  └──────────┘     └───────────┘
+       │
+       ▼
+  Response
+```
+
+## OodaReAct Mode
+
+`AgentLoopMode::OodaReAct` is for physical robot control. The agent follows the OODA loop (Observe, Orient, Decide, Act) on every turn.
+
+**Use cases:** robot control, navigation, manipulation, trajectory execution, sensor-reactive behaviors.
+
+**Behavior:**
+- Spatial context is injected each cycle (entity positions, velocities, alerts, constraints)
+- MCP tools for robot control are available (`move_to_pose`, `takeoff`, etc.)
+- `deploy_controller` is available for WASM deployment
+- Physical tool calls go through the safety stack sequentially (no parallel execution)
+- The agent must use the latest observation, not memory of previous positions
+
+```
+  User message
+       │
+       ▼
+  ┌──────────────────────────────────────────────┐
+  │                 OODA Cycle                    │
+  │                                               │
+  │  OBSERVE ──▶ ORIENT ──▶ DECIDE ──▶ ACT      │
+  │     │          │          │         │         │
+  │  Spatial    Alerts &   Plan one   Execute     │
+  │  context   constraints  action    tool call   │
+  │  injected   checked    within     through     │
+  │             (e-stop,   observed   safety      │
+  │              bounds)   bounds     stack        │
+  └──────────────────────────────────────────────┘
+       │
+       ▼
+  Observe result, repeat or respond
+```
+
+<Note>
+  In OodaReAct mode, if sensor data is missing, stale, or anomalous, the agent is instructed to assume the environment is unsafe and stop. This is a Tier 1 safety rule and cannot be overridden.
+</Note>
+
+## Mode Comparison
+
+| | React | OodaReAct |
+|---|---|---|
+| **Spatial context** | Not injected | Injected every cycle |
+| **Physical tools** | Not available | Available (MCP + deploy) |
+| **Tool parallelism** | Parallel OK | Sequential (physical tools) |
+| **Safety stack** | Not active | Active on every tool call |
+| **WASM controllers** | Cannot deploy | Can deploy via `deploy_controller` |
+| **Constitution addendum** | "Pure Reasoning" | "Physical Execution (OODA loop)" |
+
+## Mode Selection
+
+The `LocalRuntime` selects the mode based on session context. When a simulation is connected and the Copper control loop is running, OodaReAct mode is available. Without a sim connection, only React mode is used.
+
+The mode can also be set explicitly per-phase in a multi-phase task (see Phases below).
+
+## Phases
+
+A `PhaseSpec` configures per-turn behavior within a session. Each phase specifies a mode, a tool filter, and a trigger condition.
+
+```rust
+pub struct PhaseSpec {
+    pub mode: PhaseMode,           // React or OodaReAct
+    pub tools: ToolSetFilter,      // All, Only([...]), Except([...])
+    pub trigger: PhaseTrigger,     // Immediate, OnToolResult, OnUserMessage
+}
+```
+
+When the `phases` list is empty (the default), the agent runs a single phase using the session's mode with all tools available. When phases are specified, the agent transitions through them in order based on the trigger conditions.
+
+**Example: plan-then-execute**
+
+A two-phase task where the agent first plans in React mode, then executes in OodaReAct mode:
+
+```json
+[
+  { "mode": "react", "tools": "all", "trigger": "immediate" },
+  { "mode": "ooda_react", "tools": "all", "trigger": "on_user_message" }
+]
+```
+
+## Multi-Agent Delegation
+
+In OodaReAct mode, the agent can delegate spatial and visual analysis to a specialized model via the `delegate_to_spatial` tool. The primary agent (Claude) handles planning and safety decisions, while the delegatee (Gemini, LLaVA via Ollama) handles geometric reasoning.
+
+Delegation follows a structured protocol:
+1. Describe the task and expected output format
+2. Pass relevant context (images, spatial data, file references)
+3. Receive structured results
+4. Validate results before acting on them
+
+<Warning>
+  Safety-critical decisions are never delegated. Physical tool calls, e-stop evaluation, and constraint checking remain with the primary agent.
+</Warning>
+
+## Multi-Agent Teams
+
+For tasks that span multiple robots, the agent can create worker teams using NATS-based coordination.
+
+**`spawn_worker`** creates a child task on a remote robot. The child worker runs its own agent loop with its own mode and tools, connected to its local simulation or hardware.
+
+**`watch_team`** polls the NATS JetStream for team events published by child workers. The orchestrator uses this to track progress across the team.
+
+Team events follow a lifecycle:
+
+```
+  Orchestrator                         Worker
+      │                                   │
+      │─── spawn_worker ──────────────▶  │
+      │                                   │
+      │◀── WorkerStarted ────────────── │
+      │                                   │
+      │    (worker executes its task)     │
+      │                                   │
+      │◀── WorkerToolCalled ──────────── │  (optional, per tool)
+      │                                   │
+      │◀── WorkerCompleted ───────────── │  (success + result)
+      │    or WorkerFailed                │  (failure + reason)
+      │                                   │
+      │◀── WorkerExited ─────────────── │  (final cleanup)
+```
+
+The orchestrator can spawn multiple workers across different robots and monitor them all through a single `watch_team` call.
+
+## Source
+
+- Agent loop and modes: [`roz-agent/src/agent_loop.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-agent/src/agent_loop.rs)
+- Phase specs: [`roz-core/src/phases.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-core/src/phases.rs)
+- Delegation: [`roz-agent/src/delegation.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-agent/src/delegation.rs)
+- Spawn worker: [`roz-agent/src/tools/spawn_worker.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-agent/src/tools/spawn_worker.rs)
+- Watch team: [`roz-agent/src/tools/watch_team.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-agent/src/tools/watch_team.rs)
+- Team events: [`roz-core/src/team.rs`](https://github.com/BedrockDynamics/roz-oss/tree/main/crates/roz-core/src/team.rs)
