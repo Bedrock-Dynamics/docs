@@ -13,7 +13,7 @@ Self-hosting gives you the full roz server — REST API, gRPC sessions, persiste
 
 ## Docker Compose
 
-The fastest way to self-host is with Docker Compose. This starts the roz server, Postgres 16, and NATS with JetStream in a single stack.
+The fastest way to self-host is with Docker Compose. This starts the roz server, Postgres 16, NATS with JetStream, and Restate (for durable task workflows) in a single stack.
 
 ```yaml
 # docker-compose.yml
@@ -50,6 +50,14 @@ services:
       timeout: 3s
       retries: 5
 
+  restate:
+    image: docker.io/restatedev/restate:1
+    ports:
+      - "8081:8080"   # Restate ingress
+      - "9070:9070"   # Restate admin
+    volumes:
+      - restatedata:/restate-data
+
   roz-server:
     image: bedrockdynamics/roz-server:latest
     ports:
@@ -57,6 +65,7 @@ services:
     environment:
       DATABASE_URL: postgres://roz:changeme@postgres:5432/roz
       NATS_URL: nats://nats:4222
+      RESTATE_INGRESS_URL: http://restate:8080
       ROZ_API_URL: http://localhost:8080
       RUST_LOG: info,roz_server=debug
     depends_on:
@@ -64,11 +73,18 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      restate:
+        condition: service_started
 
 volumes:
   pgdata:
   natsdata:
+  restatedata:
 ```
+
+<Note>
+  [Restate](https://restate.dev) is an open-source (Apache-2.0) durable execution engine. roz uses it for reliable task lifecycle management. It runs as a single Docker container with no external dependencies.
+</Note>
 
 Start the stack:
 
